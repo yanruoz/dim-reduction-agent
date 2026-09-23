@@ -1,0 +1,23 @@
+{
+  "n_samples": 89996,
+  "n_features": 2352,
+  "sparsity": 0.0001,
+  "has_missing": false,
+  "value_range": [
+    0.0,
+    255.0
+  ],
+  "mean": 168.24526370200732,
+  "std": 43.36160886906823,
+  "has_labels": true,
+  "n_classes": 9,
+  "metadata": {
+    "source": "pathmnist",
+    "modality": "image",
+    "image_shape": [
+      28,
+      28,
+      3
+    ]
+  }
+}

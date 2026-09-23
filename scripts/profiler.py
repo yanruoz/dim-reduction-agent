@@ -2,8 +2,11 @@
    interface from loaders.py and computes summary statistics. This file
    should never contain dataset-specific branching.
 """
+import argparse
+import json
+from pathlib import Path
+
 import numpy as np
-import sys
 from loaders import load_dataset
 
 
@@ -56,9 +59,61 @@ def print_profile(name, profile):
     print(f"{'='*50}\n")
 
 
-if __name__ == "__main__":
+def write_profile_summary_md(name, profile, path):
+    """Render a profile dict as a short Markdown summary, a quick-to-skim
+    companion to profile.json (same JSON+MD pairing as validate_plan.py's
+    reports)."""
+    lines = [f"# Profile summary: {name}", ""]
+    lines.append(f"- **Samples:** {profile['n_samples']:,}")
+    lines.append(f"- **Features:** {profile['n_features']:,}")
+    lines.append(f"- **Sparsity:** {profile['sparsity'] * 100:.1f}% zeros")
+    lines.append(f"- **Missing values:** {'Yes' if profile['has_missing'] else 'No'}")
+    lines.append(
+        f"- **Value range:** [{profile['value_range'][0]:.2f}, {profile['value_range'][1]:.2f}]"
+    )
+    lines.append(f"- **Mean / Std:** {profile['mean']:.3f} / {profile['std']:.3f}")
+    if profile["has_labels"]:
+        lines.append(f"- **Labels:** Yes ({profile['n_classes']} classes)")
+    else:
+        lines.append("- **Labels:** No")
 
-    dataset_name = sys.argv[1] if len(sys.argv) > 1 else "pbmc3k"
-    X, y, metadata = load_dataset(dataset_name)
+    if "metadata" in profile:
+        lines.append("")
+        lines.append("## Metadata")
+        for k, v in profile["metadata"].items():
+            if isinstance(v, (list, tuple)) and len(v) > 5:
+                v_display = f"`{v[0]!r}`, `{v[1]!r}`, ... ({len(v)} total)"
+            else:
+                v_display = v
+            lines.append(f"- **{k}:** {v_display}")
+
+    Path(path).write_text("\n".join(lines) + "\n")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Profile a dataset; writes profile.json + profile_summary.md."
+    )
+    parser.add_argument("--dataset", required=True, help="Dataset name registered in loaders.LOADERS")
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="Path to write profile.json (default: outputs/<dataset>/profile.json)",
+    )
+    args = parser.parse_args()
+
+    out_path = Path(args.out) if args.out else Path("outputs") / args.dataset / "profile.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    X, y, metadata = load_dataset(args.dataset)
     profile = profile_dataset(X, y, metadata)
-    print_profile(dataset_name, profile)
+    print_profile(args.dataset, profile)
+
+    with open(out_path, "w") as f:
+        json.dump(profile, f, indent=2)
+
+    md_path = out_path.with_name("profile_summary.md")
+    write_profile_summary_md(args.dataset, profile, md_path)
+
+    print(f"Wrote {out_path}")
+    print(f"Wrote {md_path}")
