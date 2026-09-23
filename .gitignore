@@ -10,3 +10,7 @@ data/*
 .DS_Store
 .vscode/
 .idea/
+
+# course-provided materials, not ours to redistribute publicly
+resources/*.pdf
+resources/*.docx
