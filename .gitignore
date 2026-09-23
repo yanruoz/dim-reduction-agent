@@ -7,6 +7,9 @@ __pycache__/
 .env
 data/*
 !data/.gitkeep
+!data/*/
+data/*/*
+!data/*/DATA_DESCRIPTION.md
 .DS_Store
 .vscode/
 .idea/

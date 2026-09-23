@@ -35,6 +35,7 @@ This repository may be run by a fresh Claude Code session, with no memory of how
 10. A dataset's analysis isn't done until `reports/<dataset>/generated_report_<N>.pdf` exists and opens correctly.
 11. **Never treat an assumption as a fact.** If `DATA_DESCRIPTION.md` and `profile.json` don't clearly determine a choice (a default hyperparameter, an ambiguous preprocessing step, an unclear structural claim about the data), don't silently pick one path: say in `plan.json`'s `reason` field that this is a judgment call, what the alternatives were, and why you picked this one over them.
 12. **Log every decision, not just the hard ones.** Every entry in `plan.json`'s `preprocessing` and `methods` lists needs its own `reason`, including defaults inherited from a general heuristic. "Standard choice" or "default" is not an acceptable reason on its own; say what makes it the right choice *for this dataset*.
+13. **Reuse before recomputing.** Before running a method, check `outputs/<dataset>/` for a matching artifact (same method, hyperparameters, and seed, verified against its sidecar params JSON); reuse it instead of rerunning. If you find yourself computing the same thing twice in one session, that's a bug, not a feature.
 
 ---
 
@@ -53,7 +54,7 @@ PCA (always include as a baseline), at least one PCA variant (e.g. Kernel PCA or
 
 ## Required execution sequence
 
-1. **Locate and read.** Find `data/<dataset>/DATA_DESCRIPTION.md` and the data file(s) it points to.
+1. **Locate and read.** Find `data/<dataset>/DATA_DESCRIPTION.md` and the data file(s) it points to. Run `python scripts/doctor.py --check core` first; if a required package or file is missing, stop here, document exactly what's missing in your response, and don't proceed to profiling.
 2. **Profile.** `python scripts/profiler.py --dataset <dataset> --out outputs/<dataset>/profile.json`. Read the resulting `profile.json` and `profile_summary.md`.
 3. **Consult skills.** Read `.claude/skills/data-profiling/SKILL.md` to decide preprocessing, then `.claude/skills/method-selection/SKILL.md` to pick methods and hyperparameters.
 4. **Write the plan.** Write `outputs/<dataset>/plan.json` (schema and decision logic live in `method-selection/SKILL.md`, not here). Every preprocessing step and every method needs a `reason` grounded in `profile.json`/`DATA_DESCRIPTION.md`.
@@ -62,9 +63,9 @@ PCA (always include as a baseline), at least one PCA variant (e.g. Kernel PCA or
    ```bash
    python scripts/run_plan.py outputs/<dataset>/plan.json
    ```
-   This runs `reduce_dim.py` -> `evaluate.py` -> `visualize.py` for every method in the plan, applies the Fallback rules below per method, and writes `outputs/<dataset>/run_log.json` recording what succeeded, what fell back, and what was skipped. **If you need to redo just one method** (e.g. after changing a hyperparameter for it alone), call `reduce_dim.py`/`evaluate.py`/`visualize.py` directly for that method instead of rerunning the whole plan. Never write ad hoc reduction or plotting code inline; every numeric or visual artifact comes from these scripts.
+   This runs `reduce_dim.py` -> `evaluate.py` -> `visualize.py` for every method in the plan (whatever short list `method-selection` put there, this script never adds to it), applies the Fallback rules below per method, and writes `outputs/<dataset>/run_log.json` recording what succeeded, what fell back, what was skipped, and what was reused from a prior matching artifact (rule 13). It skips any method whose artifacts already match the plan rather than recomputing them, and prints a short progress line per method as it goes (e.g. `[2/3] Running UMAP...`) so anyone watching, or reading the transcript back later, can tell where it is. **If you need to redo just one method** (e.g. after changing a hyperparameter for it alone), call `reduce_dim.py`/`evaluate.py`/`visualize.py` directly for that method instead of rerunning the whole plan. Never write ad hoc reduction or plotting code inline; every numeric or visual artifact comes from these scripts.
 7. **Critique, if built.** If `.claude/agents/dr-critic.md` exists, dispatch it with only `plan.json`, `metrics/*.json`, and figure paths, never your own reasoning transcript. A returned `critique.json` gets addressed with exactly one plan revision, then repeat steps 5 to 7 for whatever changed. If the critic doesn't exist yet or produces nothing, go straight to step 8.
-8. **Report.** Read `.claude/skills/reporting/SKILL.md`, then `python scripts/report.py --dataset <dataset> --report-number <N>`.
+8. **Report.** Run `python scripts/doctor.py --check report` first; if the report-rendering dependency is missing, stop here and document exactly what's missing in your response rather than failing silently. Otherwise, read `.claude/skills/reporting/SKILL.md`, then `python scripts/report.py --dataset <dataset> --report-number <N>`.
 9. **Final self-check.** Work through the checklist near the end of this file.
 
 ---
@@ -81,6 +82,7 @@ PCA (always include as a baseline), at least one PCA variant (e.g. Kernel PCA or
 - If a method fails after its one retry (see Guard rails), skip it, fall back to reporting PCA alone for that slot, and document the failure and fallback explicitly in `run_log.json`, `plan.json`, and the report. One method failing must never crash the whole run.
 - If the critic subagent isn't built yet or is unavailable, proceed without it (step 7). Don't block a run on missing optional infrastructure.
 - Never ship a report with a missing figure, a NaN/Inf metric, or a fabricated number. If a metric genuinely can't be computed, say so explicitly rather than omitting it or inventing a value.
+- If `scripts/doctor.py` reports something missing that's required for the step you're about to take, stop that step and document exactly what's missing. Don't guess a workaround, don't silently skip it, and don't wait indefinitely for someone to fix it either; state the gap and stop cleanly.
 
 ---
 
@@ -90,12 +92,13 @@ Run any script with `--help` for its current, authoritative flags; this is the t
 
 | Script | Invocation | Produces |
 |---|---|---|
+| `scripts/doctor.py` | `--check {core,report,all}` (default `all`) | pass/fail + JSON+Markdown report: `core` checks required packages import and `data/<dataset>/DATA_DESCRIPTION.md` exists; `report` checks the report-rendering dependency separately, so a missing one never blocks profiling/reduction/evaluation |
 | `scripts/profiler.py` | `--dataset <name> --out outputs/<dataset>/profile.json` | `profile.json` + `profile_summary.md` |
 | `scripts/reduce_dim.py` | `--dataset <name> --method <name> --params '<json>' --seed <int>` | `outputs/<dataset>/embeddings/<method>.npy` + sidecar params JSON |
 | `scripts/evaluate.py` | `--embedding <path> --X <path> [--labels <path>]` | `outputs/<dataset>/metrics/<method>.json` |
 | `scripts/visualize.py` | `--embedding <path> [--labels <path>] --title <str>` | `outputs/<dataset>/figures/<method>.png` |
 | `scripts/validate_plan.py` | `outputs/<dataset>/plan.json` | pass/fail + JSON+Markdown report |
-| `scripts/run_plan.py` | `outputs/<dataset>/plan.json` | runs `reduce_dim`/`evaluate`/`visualize` for every method in the plan; writes `outputs/<dataset>/run_log.json` |
+| `scripts/run_plan.py` | `outputs/<dataset>/plan.json` | runs `reduce_dim`/`evaluate`/`visualize` for every method already in the plan (never more); skips a method if a matching artifact already exists; prints a progress line per method; writes `outputs/<dataset>/run_log.json` |
 | `scripts/report.py` | `--dataset <name> --report-number {1,2,...}` | `reports/<dataset>/generated_report_<N>.pdf` |
 | `scripts/make_synthetic.py` (deferred) | `--n-samples <int> --seed <int>` | a synthetic dataset folder under `data/` |
 
