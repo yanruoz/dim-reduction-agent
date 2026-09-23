@@ -1,0 +1,39 @@
+{
+  "dataset": "pbmc3k",
+  "preprocessing": [
+    {
+      "step": "normalize_total",
+      "reason": "Raw UMI counts (profile.json: mean ~2367 total counts per cell) have very different per-cell totals; DATA_DESCRIPTION.md notes no normalization has been applied yet. Library-size normalization removes sequencing-depth differences between cells before comparing expression profiles."
+    },
+    {
+      "step": "log1p",
+      "reason": "Raw counts are heavily right-skewed; DATA_DESCRIPTION.md notes a small number of highly-expressed genes can dominate raw totals. Log transform compresses this skew so distance-based methods (PCA, UMAP) aren't dominated by a handful of extreme values."
+    },
+    {
+      "step": "select_hvg",
+      "params": {"n_top_genes": 2000},
+      "reason": "32,738 genes is far more than 2,700 cells, and 97.4% of entries are zero (profile.json), so most genes carry little signal. Selecting the top 2,000 highly variable genes keeps the informative signal and keeps distance computations from being dominated by noise genes."
+    }
+  ],
+  "methods": [
+    {
+      "name": "pca",
+      "hyperparameters": {"n_components": 50},
+      "role": "baseline",
+      "reason": "Required linear baseline. 50 components is the standard scRNA-seq choice: enough to capture most biological variance across 2,000 genes without overfitting to per-gene noise given only 2,700 cells."
+    },
+    {
+      "name": "umap",
+      "hyperparameters": {"n_neighbors": 15, "min_dist": 0.1, "n_components": 2, "random_state": 0},
+      "role": "primary_visualization",
+      "reason": "Standard nonlinear manifold method for scRNA-seq visualization. n_neighbors=15 and min_dist=0.1 are UMAP's own defaults; with 2,700 cells there's no strong reason yet to move off the defaults, this is a first-pass plan for pipeline testing, not a final analysis."
+    }
+  ],
+  "evaluation": {
+    "quantitative": ["trustworthiness", "explained_variance_ratio"],
+    "qualitative": ["seed_stability_check"]
+  },
+  "seed": 0,
+  "revision": 1,
+  "critique_applied": null
+}
