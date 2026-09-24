@@ -1,0 +1,7 @@
+{
+  "method": "umap",
+  "trustworthiness": 0.7656,
+  "trustworthiness_n_neighbors": 10,
+  "trustworthiness_subsampled": false,
+  "trustworthiness_n_samples_used": 2700
+}
