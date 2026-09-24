@@ -1,0 +1,14 @@
+{
+  "dataset": "pbmc",
+  "plan_revision": 1,
+  "methods": [
+    {
+      "name": "pca",
+      "status": "reused"
+    },
+    {
+      "name": "umap",
+      "status": "reused"
+    }
+  ]
+}

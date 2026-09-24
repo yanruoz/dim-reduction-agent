@@ -3,10 +3,11 @@
   "hyperparameters": {
     "n_neighbors": 15,
     "min_dist": 0.1,
-    "n_components": 2
+    "n_components": 2,
+    "random_state": 0
   },
   "seed": 0,
-  "runtime_seconds": 11.229,
+  "runtime_seconds": 10.872,
   "embedding_shape": [
     2700,
     2
