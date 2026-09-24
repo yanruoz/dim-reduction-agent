@@ -7,11 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-ALLOWED_METHODS = {
-    "pca", "kernel_pca", "sparse_pca",
-    "mds", "isomap", "lle", "laplacian_eigenmaps", "diffusion_maps",
-    "tsne", "umap", "gplvm",
-}
+from plan_schema import ALLOWED_METHODS, KNOWN_PREPROCESSING_STEPS
 
 # CLAUDE.md rule 12: "standard choice"/"default" alone is not an acceptable reason.
 LAZY_REASONS = {"", "standard choice", "default", "standard", "n/a", "na"}
@@ -52,6 +48,11 @@ def validate_plan(plan, profile=None):
         for i, step in enumerate(plan["preprocessing"]):
             if not isinstance(step.get("step"), str) or not step["step"].strip():
                 errors.append(f"preprocessing[{i}]: missing or empty 'step'")
+            elif step["step"] not in KNOWN_PREPROCESSING_STEPS:
+                errors.append(
+                    f"preprocessing[{i}]: '{step['step']}' is not a known preprocessing step "
+                    f"({sorted(KNOWN_PREPROCESSING_STEPS)})"
+                )
             if _is_lazy_reason(step.get("reason")):
                 errors.append(
                     f"preprocessing[{i}] ('{step.get('step')}'): 'reason' is missing or a placeholder "

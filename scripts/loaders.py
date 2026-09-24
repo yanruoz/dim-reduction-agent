@@ -44,9 +44,12 @@ def load_pathmnist(split="train"):
     return X, y, metadata
 
 
-# Registry so the rest of the pipeline can look datasets up by name
+# Registry so the rest of the pipeline can look datasets up by name.
+# Keys match the data/<name>/ and outputs/<name>/ folder convention used
+# everywhere else (CLAUDE.md, plan.json, etc.), not the upstream dataset's
+# own name where the two differ (e.g. "pbmc", not "pbmc3k").
 LOADERS = {
-    "pbmc3k": load_pbmc3k,
+    "pbmc": load_pbmc3k,
     "pathmnist": load_pathmnist,
 }
 
