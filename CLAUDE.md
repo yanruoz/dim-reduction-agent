@@ -72,8 +72,10 @@ PCA (always include as a baseline), at least one PCA variant (e.g. Kernel PCA or
 
 ## Guard rails
 
+- Every method has a fixed role in `plan_schema.METHOD_ROLES`: `general_purpose` (PCA, Kernel PCA, Sparse PCA, MDS, Isomap, Diffusion Maps, GPLVM), `local_structure_only` (LLE, Laplacian Eigenmaps), or `visualization_only` (t-SNE, UMAP). A `general_purpose` and a `visualization_only` method in the same plan are not competing alternatives for the same job, they serve different purposes and can both be included without one needing to "win."
+- **A `visualization_only` embedding must never feed any further computation**, clustering, distance calculations, another method, nothing. Its only legitimate use is producing a plot for a human to look at. This is stronger than just being cautious about interpretation.
 - Never treat t-SNE/UMAP cluster sizes, shapes, or inter-cluster distances as meaningful on their own; run at least two seeds or two hyperparameter settings for any manifold method before trusting a structural claim in the report.
-- MDS and Isomap are roughly O(N²) or worse. If `n_samples` is large (rough guide: above ~5000), subsample before running them and record that choice as a `plan.json` reason; don't do it silently.
+- MDS, Isomap, Kernel PCA, and Diffusion Maps are roughly O(N²) or worse (Kernel PCA's RBF kernel and this project's Diffusion Maps implementation both build an N×N matrix, same problem as MDS/Isomap). If `n_samples` is large (rough guide: above ~5000), subsample before running them, or pick a different method in the same role category (e.g. Sparse PCA instead of Kernel PCA for the required PCA variant), and record that choice as a `plan.json` reason; don't do it silently.
 - One shared preprocessing block per plan, applied identically before every method in it; never let one method silently use different preprocessing than another.
 - Isomap/LLE/Laplacian Eigenmaps neighbor graphs can be disconnected: retry once with a larger `n_neighbors`, then apply the Fallback rules below if it still fails.
 
@@ -119,8 +121,7 @@ Run any script with `--help` for its current, authoritative flags; this is the t
 
 - `.claude/skills/data-profiling/SKILL.md`: how to turn a profile into a preprocessing recommendation.
 - `.claude/skills/method-selection/SKILL.md`: how to choose methods and hyperparameters, and the full `plan.json` schema.
-- `.claude/skills/embedding-evaluation/SKILL.md` (deferred): quantitative and qualitative evaluation criteria.
-- `.claude/skills/reporting/SKILL.md`: report structure, tone, and content requirements.
+- `.claude/skills/reporting/SKILL.md`: report structure, tone, and content requirements. Which metric applies to which method is decided inside `evaluate.py` itself, not a skill; qualitative caution about over-reading an embedding's geometry is in the Guard rails above.
 - `.claude/agents/dr-critic.md` (deferred): the adversarial critique subagent's contract and return format.
 
 ---

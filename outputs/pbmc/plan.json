@@ -23,7 +23,7 @@
       "hyperparameters": {
         "n_components": 50
       },
-      "role": "baseline",
+      "role": "general_purpose",
       "reason": "Required linear baseline. 50 components is the standard scRNA-seq choice: enough to capture most biological variance across 2,000 genes without overfitting to per-gene noise given only 2,700 cells."
     },
     {
@@ -34,7 +34,7 @@
         "n_components": 2,
         "random_state": 0
       },
-      "role": "primary_visualization",
+      "role": "visualization_only",
       "reason": "Standard nonlinear manifold method for scRNA-seq visualization. n_neighbors=15 and min_dist=0.1 are UMAP's own defaults; with 2,700 cells there's no strong reason yet to move off the defaults, this is a first-pass plan for pipeline testing, not a final analysis."
     }
   ],

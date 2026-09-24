@@ -16,3 +16,31 @@ KNOWN_PREPROCESSING_STEPS = {
     "standardize",
     "scale_unit_range",
 }
+
+# Every plan.json method entry must declare a "role" matching its method's
+# fixed category here (validate_plan.py checks this). Not a strict binary:
+# - general_purpose: preserves enough global structure to trust as an input
+#   to further quantitative work (clustering, distances); pca/kernel_pca/
+#   sparse_pca/mds/diffusion_maps/gplvm live here, isomap too (it targets
+#   geodesic distance) though it's used this way less often in practice.
+# - local_structure_only: preserves local neighborhoods, not global
+#   distances; a real middle category, not as extreme as the next one.
+# - visualization_only: optimizes purely for a good-looking local layout at
+#   the direct cost of global distance fidelity (t-SNE, UMAP). An embedding
+#   in this category must never feed any further computation, only plotting.
+METHOD_ROLES = {
+    "pca": "general_purpose",
+    "kernel_pca": "general_purpose",
+    "sparse_pca": "general_purpose",
+    "mds": "general_purpose",
+    "isomap": "general_purpose",
+    "diffusion_maps": "general_purpose",
+    "gplvm": "general_purpose",
+    "lle": "local_structure_only",
+    "laplacian_eigenmaps": "local_structure_only",
+    "tsne": "visualization_only",
+    "umap": "visualization_only",
+}
+assert set(METHOD_ROLES) == ALLOWED_METHODS, "METHOD_ROLES must cover exactly the approved methods"
+
+ALLOWED_ROLES = {"general_purpose", "local_structure_only", "visualization_only"}

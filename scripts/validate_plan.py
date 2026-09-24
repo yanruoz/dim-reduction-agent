@@ -7,13 +7,15 @@ import json
 import sys
 from pathlib import Path
 
-from plan_schema import ALLOWED_METHODS, KNOWN_PREPROCESSING_STEPS
+from plan_schema import ALLOWED_METHODS, ALLOWED_ROLES, KNOWN_PREPROCESSING_STEPS, METHOD_ROLES
 
 # CLAUDE.md rule 12: "standard choice"/"default" alone is not an acceptable reason.
 LAZY_REASONS = {"", "standard choice", "default", "standard", "n/a", "na"}
 
-# CLAUDE.md guard rail: MDS/Isomap are O(N^2) or worse above this size.
-LARGE_N_METHODS = {"mds", "isomap"}
+# CLAUDE.md guard rail: MDS/Isomap/Kernel PCA/Diffusion Maps are all O(N^2) or
+# worse above this size (Kernel PCA's RBF kernel and this project's diffusion
+# maps implementation both build an N x N distance/affinity matrix).
+LARGE_N_METHODS = {"mds", "isomap", "kernel_pca", "diffusion_maps"}
 LARGE_N_THRESHOLD = 5000
 
 
@@ -69,6 +71,16 @@ def validate_plan(plan, profile=None):
 
             if name not in ALLOWED_METHODS:
                 errors.append(f"methods[{i}]: '{name}' is not in the approved method list ({sorted(ALLOWED_METHODS)})")
+
+            role = method.get("role")
+            if role not in ALLOWED_ROLES:
+                errors.append(f"methods[{i}] ('{name}'): 'role' must be one of {sorted(ALLOWED_ROLES)}, got {role!r}")
+            elif name in METHOD_ROLES and role != METHOD_ROLES[name]:
+                errors.append(
+                    f"methods[{i}] ('{name}'): 'role' is {role!r} but '{name}' is always "
+                    f"{METHOD_ROLES[name]!r} (see plan_schema.METHOD_ROLES); a visualization-only "
+                    f"embedding must never be declared general_purpose or vice versa"
+                )
 
             hp = method.get("hyperparameters")
             if not isinstance(hp, dict):
