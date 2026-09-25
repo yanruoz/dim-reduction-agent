@@ -136,6 +136,77 @@ class TestWarnings(unittest.TestCase):
         self.assertTrue(has(warnings, "could not check"))
 
 
+class TestClusteringBlock(unittest.TestCase):
+    def plan(self, **block):
+        plan = make_plan(pre("standardize"))
+        plan["clustering"] = dict({"source": "pca", "reason": "colors the unlabeled plots; 100 samples"}, **block)
+        return plan
+
+    def test_a_valid_block_passes(self):
+        errors, warnings = check(self.plan(k_range=[2, 8]), CLEAN)
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+    def test_no_block_is_fine(self):
+        errors, _ = check(make_plan(pre("standardize")), CLEAN)
+        self.assertEqual(errors, [])
+
+    def test_visualization_only_source_is_an_error(self):
+        errors, _ = check(self.plan(source="umap"), CLEAN)
+        self.assertTrue(has(errors, "general_purpose"))
+
+    def test_local_structure_source_is_an_error(self):
+        plan = self.plan(source="lle")
+        plan["methods"].append({"name": "lle", "role": "local_structure_only", "hyperparameters": {}, "reason": "specific reason"})
+        errors, _ = check(plan, CLEAN)
+        self.assertTrue(has(errors, "general_purpose"))
+
+    def test_source_must_be_a_method_in_the_plan(self):
+        errors, _ = check(self.plan(source="kernel_pca"), CLEAN)
+        self.assertTrue(has(errors, "not a method in this plan"))
+
+    def test_lazy_or_missing_reason_is_an_error(self):
+        for reason in ("default", "", None):
+            plan = self.plan(reason=reason)
+            errors, _ = check(plan, CLEAN)
+            self.assertTrue(has(errors, "clustering: 'reason'"), reason)
+
+    def test_unknown_algorithm_and_unknown_keys_are_errors(self):
+        errors, _ = check(self.plan(algorithm="dbscan"), CLEAN)
+        self.assertTrue(has(errors, "algorithm must be one of"))
+        errors, _ = check(self.plan(n_clusters=4), CLEAN)
+        self.assertTrue(has(errors, "unknown key"))
+
+    def test_k_must_be_an_integer_of_at_least_two_and_below_n(self):
+        for bad in (1, 0, 2.5, "3", True, 100, 500):
+            errors, _ = check(self.plan(k=bad), CLEAN)
+            self.assertTrue(has(errors, "clustering: k "), bad)
+        for good in (2, 5, None):
+            errors, _ = check(self.plan(k=good), CLEAN)
+            self.assertEqual(errors, [], good)
+
+    def test_k_range_shape_is_checked(self):
+        for bad in ([2], [5, 3], [1, 5], [2.0, 5], "2-5", [2, 3, 4], [True, 5]):
+            errors, _ = check(self.plan(k_range=bad), CLEAN)
+            self.assertTrue(has(errors, "k_range must be"), bad)
+
+    def test_k_range_above_n_is_only_a_warning(self):
+        errors, warnings = check(self.plan(k_range=[2, 500]), CLEAN)
+        self.assertEqual(errors, [])
+        self.assertTrue(has(warnings, "will be clipped"))
+
+    def test_labelled_dataset_warns_that_clusters_go_unused(self):
+        errors, warnings = check(self.plan(), dict(CLEAN, has_labels=True))
+        self.assertEqual(errors, [])
+        self.assertTrue(has(warnings, "ground-truth labels"))
+
+    def test_non_dict_block_is_an_error(self):
+        plan = make_plan(pre("standardize"))
+        plan["clustering"] = "pca"
+        errors, _ = check(plan, CLEAN)
+        self.assertTrue(has(errors, "'clustering' must be a dict"))
+
+
 class TestExistingRulesStillApply(unittest.TestCase):
     def test_placeholder_reason_on_impute_is_still_rejected(self):
         plan = make_plan({"step": "impute", "reason": "standard choice"})

@@ -10,6 +10,7 @@ from pathlib import Path
 from plan_schema import (
     ALLOWED_METHODS,
     ALLOWED_ROLES,
+    CLUSTERING_ALGORITHMS,
     IMPUTE_STRATEGIES,
     KNOWN_PREPROCESSING_STEPS,
     METHOD_ROLES,
@@ -98,6 +99,65 @@ def _check_missing_value_handling(plan, profile, errors, warnings):
             )
     elif "impute" in steps:
         warnings.append("profile.json shows no missing values, so the 'impute' step is unnecessary.")
+
+
+CLUSTERING_KEYS = {"source", "algorithm", "k_range", "k", "reason"}
+
+
+def _check_clustering(plan, profile, errors, warnings):
+    """Optional `clustering` block: data-derived labels used only to color plots. The source must be a
+    general_purpose method that is in this plan, so a visualization_only embedding can never feed it."""
+    block = plan.get("clustering")
+    if block is None:
+        return
+    if not isinstance(block, dict):
+        errors.append("'clustering' must be a dict")
+        return
+
+    unknown = sorted(set(block) - CLUSTERING_KEYS)
+    if unknown:
+        errors.append(f"clustering: unknown key(s) {unknown}; allowed keys are {sorted(CLUSTERING_KEYS)}")
+
+    if _is_lazy_reason(block.get("reason")):
+        errors.append("clustering: 'reason' is missing or a placeholder like 'standard choice'/'default'")
+
+    algorithm = block.get("algorithm", "kmeans")
+    if algorithm not in CLUSTERING_ALGORITHMS:
+        errors.append(f"clustering: algorithm must be one of {sorted(CLUSTERING_ALGORITHMS)}, got {algorithm!r}")
+
+    source = block.get("source")
+    methods = {m.get("name"): m for m in plan.get("methods", []) if isinstance(m, dict)}
+    if source not in methods:
+        errors.append(f"clustering: source {source!r} is not a method in this plan (methods: {sorted(n for n in methods if n)})")
+    elif METHOD_ROLES.get(source) != "general_purpose":
+        errors.append(
+            f"clustering: source {source!r} has role {METHOD_ROLES.get(source)!r}; clustering may only use a "
+            "general_purpose embedding (a visualization_only or local-structure embedding must never feed it)"
+        )
+
+    n = (profile or {}).get("n_samples")
+    if "k" in block and block["k"] is not None:
+        k = block["k"]
+        if not isinstance(k, int) or isinstance(k, bool) or k < 2:
+            errors.append(f"clustering: k must be an integer >= 2, got {k!r}")
+        elif n is not None and k >= n:
+            errors.append(f"clustering: k ({k}) must be smaller than n_samples ({n})")
+    if "k_range" in block:
+        kr = block["k_range"]
+        ok = (
+            isinstance(kr, list) and len(kr) == 2 and all(isinstance(v, int) and not isinstance(v, bool) for v in kr)
+            and 2 <= kr[0] <= kr[1]
+        )
+        if not ok:
+            errors.append(f"clustering: k_range must be [low, high] integers with 2 <= low <= high, got {kr!r}")
+        elif n is not None and kr[1] >= n:
+            warnings.append(f"clustering: k_range upper bound ({kr[1]}) is not below n_samples ({n}); it will be clipped")
+
+    if profile is not None and profile.get("has_labels"):
+        warnings.append(
+            "clustering: the dataset has ground-truth labels, so plots are colored by those labels and the "
+            "data-derived clusters go unused; drop the clustering block unless you want them for comparison"
+        )
 
 
 def validate_plan(plan, profile=None):
@@ -207,6 +267,7 @@ def validate_plan(plan, profile=None):
 
     if isinstance(plan["preprocessing"], list):
         _check_missing_value_handling(plan, profile, errors, warnings)
+    _check_clustering(plan, profile, errors, warnings)
 
     return errors, warnings
 

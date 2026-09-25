@@ -50,4 +50,7 @@ METHOD_ROLES = {
 }
 assert set(METHOD_ROLES) == ALLOWED_METHODS, "METHOD_ROLES must cover exactly the approved methods"
 
+# Optional plan.json "clustering" block: labels used only to color unlabeled plots.
+CLUSTERING_ALGORITHMS = {"kmeans"}
+
 ALLOWED_ROLES = {"general_purpose", "local_structure_only", "visualization_only"}
