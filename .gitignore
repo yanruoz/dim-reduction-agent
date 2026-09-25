@@ -17,3 +17,6 @@ data/*/*
 # course-provided materials, not ours to redistribute publicly
 resources/*.pdf
 resources/*.docx
+
+# large intermediate embeddings (36MB each for pathmnist); regenerable via run_plan.py
+outputs/*/embeddings/*.npy

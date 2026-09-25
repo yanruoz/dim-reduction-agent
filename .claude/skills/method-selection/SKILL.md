@@ -57,7 +57,7 @@ Always start from `profile.json`'s `n_samples` (after any subsampling decided in
 
 2. **Always include exactly one PCA variant**, per the assignment's requirement. Choose based on `n_samples`:
    - `n_samples <= 5000`: `kernel_pca` is fine (its `O(N²)` kernel matrix is manageable at this size). Default `kernel: "rbf"`.
-   - `n_samples > 5000`: use `sparse_pca` instead. `kernel_pca` and `mds`/`isomap`/`diffusion_maps` all become impractical above this threshold (CLAUDE.md's Guard rails); don't select any of them here without an explicit, documented subsample step.
+   - `n_samples > 5000`: use `sparse_pca` instead. `kernel_pca` and `mds`/`isomap`/`diffusion_maps` all become impractical above this threshold (CLAUDE.md's Guard rails); don't select any of them here without an explicit, documented subsample step. **Cost warning, measured:** `sparse_pca` is not cheap either; at 89,996 samples x 2,352 features and 50 components it took about 23 minutes (vs. ~8 seconds for plain PCA and ~2 minutes for UMAP on the same data). It is still the right choice here since the alternatives don't run at all, but expect it to dominate the run time, and keep `n_components` modest for it.
 
 3. **Include one `visualization_only` method**, default `umap` (faster and more scalable than `tsne` at any size we'll see). Only add `tsne` as well if you have a specific reason to compare two visualization layouts, it's a nice-to-have, not required, since it fills the same role as UMAP.
 

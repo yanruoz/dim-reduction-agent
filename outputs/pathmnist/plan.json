@@ -1,0 +1,36 @@
+{
+  "dataset": "pathmnist",
+  "preprocessing": [
+    {
+      "step": "scale_unit_range",
+      "reason": "Raw pixel intensities are 0-255 (profile.json value_range) and DATA_DESCRIPTION.md confirms these are bounded RGB values, not counts; rescaling to [0,1] keeps no single pixel channel dominating a distance computation purely from its raw scale. Not count-like data, so normalize_total/log1p don't apply, and n_features (2,352) is well under n_samples (89,996) so select_hvg isn't needed either."
+    }
+  ],
+  "methods": [
+    {
+      "name": "pca",
+      "role": "general_purpose",
+      "hyperparameters": {"n_components": 50},
+      "reason": "Required linear baseline. n_components = min(50, floor(89996/2), 2352) = 50 per the standard heuristic; plenty of samples relative to components so no overfitting risk here."
+    },
+    {
+      "name": "sparse_pca",
+      "role": "general_purpose",
+      "hyperparameters": {"n_components": 50},
+      "reason": "Required PCA variant. n_samples (89,996) exceeds the 5,000-sample threshold where kernel_pca's O(N^2) kernel matrix becomes impractical, so sparse_pca is used instead, per method-selection/SKILL.md's size-gated rule."
+    },
+    {
+      "name": "umap",
+      "role": "visualization_only",
+      "hyperparameters": {"n_neighbors": 30, "min_dist": 0.1, "n_components": 2, "random_state": 0},
+      "reason": "Standard visualization method; n_neighbors raised to 30 (from the default 15) because n_samples (89,996) exceeds 20,000, per method-selection/SKILL.md's size heuristic, for a smoother, more stable neighborhood graph at this scale."
+    }
+  ],
+  "evaluation": {
+    "quantitative": ["trustworthiness", "explained_variance_ratio"],
+    "qualitative": ["seed_stability_check"]
+  },
+  "seed": 0,
+  "revision": 1,
+  "critique_applied": null
+}

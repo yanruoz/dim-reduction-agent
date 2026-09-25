@@ -1,0 +1,9 @@
+{
+  "method": "sparse_pca",
+  "trustworthiness": 0.9816,
+  "trustworthiness_n_neighbors": 10,
+  "trustworthiness_subsampled": true,
+  "trustworthiness_n_samples_used": 5000,
+  "label_silhouette_sanity_check": -0.0487,
+  "label_silhouette_note": "Ground-truth-label silhouette in embedding space; a supervised sanity check only, never used to tune hyperparameters."
+}

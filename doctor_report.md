@@ -1,4 +1,4 @@
-# Doctor check: all
+# Doctor check: core
 
 **Result:** PASS
 
@@ -12,4 +12,4 @@
 - OK: umap
 - OK: matplotlib
 - OK: medmnist
-- OK: matplotlib.backends.backend_pdf
+- OK: data/pathmnist/DATA_DESCRIPTION.md

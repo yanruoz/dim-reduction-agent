@@ -65,6 +65,31 @@ def text_page(title, blocks):
     return fig
 
 
+def _block_height(heading, paragraphs):
+    lines = sum(len(_wrap(p)) for p in paragraphs)
+    return (0.035 if heading else 0.0) + lines * 0.022 + 0.008 * len(paragraphs) + 0.015
+
+
+def text_pages(title, blocks):
+    """Like text_page, but splits blocks across as many pages as needed (a
+    block is never split mid-way), so a plan with many methods spills onto a
+    continuation page instead of being truncated."""
+    capacity = 0.97 - 0.06 - MIN_Y_BEFORE_TRUNCATE
+    pages_blocks, current, used = [], [], 0.0
+    for heading, paragraphs in blocks:
+        h = _block_height(heading, paragraphs)
+        if current and used + h > capacity:
+            pages_blocks.append(current)
+            current, used = [], 0.0
+        current.append((heading, paragraphs))
+        used += h
+    if current or not pages_blocks:
+        pages_blocks.append(current)
+    return [
+        text_page(title if i == 0 else f"{title} (cont.)", b) for i, b in enumerate(pages_blocks)
+    ]
+
+
 def table_page(title, headers, rows):
     fig, ax = plt.subplots(figsize=PAGE_SIZE)
     ax.axis("off")
@@ -146,7 +171,7 @@ if __name__ == "__main__":
     preprocessing_blocks = [(None, [what_this_is, summary_line])]
     for step in plan.get("preprocessing", []):
         preprocessing_blocks.append((f"Preprocessing: {step['step']}", [step.get("reason", "")]))
-    pages.append(text_page("Dataset profile & preprocessing", preprocessing_blocks))
+    pages.extend(text_pages("Dataset profile & preprocessing", preprocessing_blocks))
 
     # --- Methods page ---
     method_blocks = []
@@ -155,40 +180,108 @@ if __name__ == "__main__":
         heading = f"{m['name']}  (role: {m['role']}, status: {status})"
         hp_str = ", ".join(f"{k}={v}" for k, v in m.get("hyperparameters", {}).items())
         method_blocks.append((heading, [f"Hyperparameters: {hp_str}", m.get("reason", "")]))
-    pages.append(text_page("Methods and hyperparameters", method_blocks))
+    pages.extend(text_pages("Methods and hyperparameters", method_blocks))
 
     # --- Metrics table page ---
     metric_keys = [
         "trustworthiness",
-        "explained_variance_ratio_sum",
         "variance_explained_by_used_components",
         "components_needed_for_90pct_variance",
         "stress",
         "label_silhouette_sanity_check",
     ]
+    header_for = {
+        "trustworthiness": "trustworthiness",
+        "variance_explained_by_used_components": "variance explained\n(PCs used)",
+        "components_needed_for_90pct_variance": "PCs for 90%\nvariance",
+        "stress": "MDS stress",
+        "label_silhouette_sanity_check": "label silhouette",
+    }
+    all_metrics = {}
+    for m in plan["methods"]:
+        metrics_path = out_dir / "metrics" / f"{m['name']}.json"
+        if metrics_path.exists():
+            all_metrics[m["name"]] = json.loads(metrics_path.read_text())
+    # Only show a column if at least one method in this report has a value for it,
+    # so every column shown is also one the definitions page explains.
+    metric_keys = [k for k in metric_keys if any(mt.get(k) is not None for mt in all_metrics.values())]
+    headers = ["method"] + [header_for[k] for k in metric_keys]
     rows = []
     for m in plan["methods"]:
         name = m["name"]
-        metrics_path = out_dir / "metrics" / f"{name}.json"
-        if not metrics_path.exists():
+        if name not in all_metrics:
             rows.append([name, "(no metrics: method did not succeed, see Limitations)"] + [""] * (len(metric_keys) - 1))
             continue
-        metrics = json.loads(metrics_path.read_text())
+        metrics = all_metrics[name]
         row = [name]
         for key in metric_keys:
-            if key == "explained_variance_ratio_sum" and "explained_variance_ratio" in metrics:
-                row.append(fmt_metric(round(sum(metrics["explained_variance_ratio"]), 4)))
+            value = metrics.get(key)
+            if key == "components_needed_for_90pct_variance" and value is not None:
+                # A lower bound must be shown as one; a bare number would imply 90% was actually reached there.
+                is_lb = metrics.get("components_needed_for_90pct_variance_is_lower_bound")
+                row.append(f">{value}" if is_lb else str(value))
             else:
-                row.append(fmt_metric(metrics.get(key)))
+                row.append(fmt_metric(value))
         rows.append(row)
-    headers = ["method", "trustworthiness", "sum(EVR)", "var. used", "PCs for 90%", "MDS stress", "label silhouette"]
     pages.append(table_page("Quantitative metrics", headers, rows))
 
-    # --- Figure pages ---
+    # --- Metric definitions: only for the metrics that actually appear above ---
+    definitions = {
+        "trustworthiness": (
+            "Trustworthiness (sklearn.manifold.trustworthiness, 10 neighbours)",
+            "For each sample, takes its 10 nearest neighbours in the embedding and penalizes any that were not "
+            "close neighbours in the original preprocessed data, weighting each penalty by how far down the "
+            "original neighbour ranking that point sat. Ranges 0 to 1; 1 means the embedding introduces no false "
+            "neighbours. It measures local neighbourhood fidelity only, not preservation of global distances. "
+            "Computed against the data after the plan's preprocessing steps; on a random 5,000-sample subset "
+            "when the dataset is larger than that (see Limitations).",
+        ),
+        "variance_explained_by_used_components": (
+            "Variance explained (PCs used)",
+            "The fraction of the total variance in the preprocessed data captured by the principal components "
+            "actually kept in the embedding: the sum of those components' explained-variance ratios (each "
+            "component's variance divided by the total). Ranges 0 to 1. PCA only; blank for methods it does "
+            "not apply to.",
+        ),
+        "components_needed_for_90pct_variance": (
+            "PCs for 90% variance",
+            "The smallest number of principal components whose cumulative explained variance reaches 90%, read "
+            "off a diagnostic PCA fit of up to min(4 x n_components, 200) components. A leading '>' means 90% "
+            "was not reached within that fit, so the true number is larger than shown. The scree plots show "
+            "the full curve.",
+        ),
+        "stress": (
+            "MDS stress (Kruskal's Stress-1)",
+            "The square root of the summed squared differences between the embedding's pairwise distances "
+            "and the original pairwise distances, divided by the summed squared original distances "
+            "(sklearn MDS with normalized_stress=True). It is scale-free, so it can be compared across "
+            "datasets. Lower is better; 0 would be a perfect distance-preserving embedding. MDS only.",
+        ),
+        "label_silhouette_sanity_check": (
+            "Label silhouette",
+            "Mean silhouette coefficient (sklearn.metrics.silhouette_score) of the dataset's ground-truth class "
+            "labels in the embedding space, using all embedding dimensions. Ranges -1 to 1: near 1 means points "
+            "sit close to their own class and far from others, near 0 means classes overlap, negative means "
+            "points are on average nearer another class than their own. A supervised sanity check only; "
+            "labels were never used to build an embedding or to tune any hyperparameter.",
+        ),
+    }
+    definition_blocks = [
+        (heading, [text])
+        for key, (heading, text) in definitions.items()
+        if any(metrics.get(key) is not None for metrics in all_metrics.values())
+    ]
+    if definition_blocks:
+        pages.extend(text_pages("How to read the metrics", definition_blocks))
+
+    # --- Figure pages (scatter, then the scree plot right after a PCA-family scatter) ---
     for m in plan["methods"]:
         fig_path = out_dir / "figures" / f"{m['name']}.png"
         if fig_path.exists():
             pages.append(figure_page(fig_path, f"{args.dataset}: {m['name']}"))
+        scree_path = out_dir / "figures" / f"{m['name']}_scree.png"
+        if scree_path.exists():
+            pages.append(figure_page(scree_path, f"{args.dataset}: {m['name']} scree"))
 
     # --- Critique page, if present ---
     if critique:
@@ -201,6 +294,25 @@ if __name__ == "__main__":
         if status not in (None, "ok", "reused"):
             error = run_log_by_method.get(m["name"], {}).get("error", "")
             limitation_lines.append(f"{m['name']}: {status} ({error})")
+    subsampled_methods = []
+    for m in plan["methods"]:
+        mp = out_dir / "metrics" / f"{m['name']}.json"
+        if mp.exists():
+            mj = json.loads(mp.read_text())
+            if mj.get("trustworthiness_subsampled"):
+                subsampled_methods.append((m["name"], mj.get("trustworthiness_n_samples_used")))
+    if subsampled_methods:
+        n_used = subsampled_methods[0][1]
+        limitation_lines.append(
+            f"Trustworthiness was computed on a random subset of {n_used:,} of {profile['n_samples']:,} samples "
+            f"(it is O(N^2) and infeasible at full size) for: {', '.join(n for n, _ in subsampled_methods)}. "
+            "Treat those scores as estimates, not exact full-dataset values."
+        )
+    if profile.get("has_labels") is True:
+        limitation_lines.append(
+            "The label silhouette column is a supervised sanity check only, computed on the embedding's own "
+            "dimensions; it was never used to tune any hyperparameter."
+        )
     if profile.get("has_labels") is False:
         limitation_lines.append(
             "No ground-truth labels available for this dataset; embedding quality assessed only via "
@@ -210,7 +322,7 @@ if __name__ == "__main__":
         limitation_lines.append("No adversarial critique/revision pass was performed for this run (critic subagent not yet built).")
     if not limitation_lines:
         limitation_lines.append("No known limitations beyond what's noted above for each method.")
-    pages.append(text_page("Limitations", [(None, limitation_lines)]))
+    pages.extend(text_pages("Limitations", [(None, limitation_lines)]))
 
     out_path = Path("reports") / args.dataset / f"generated_report_{args.report_number}.pdf"
     out_path.parent.mkdir(parents=True, exist_ok=True)

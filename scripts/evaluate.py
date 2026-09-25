@@ -26,6 +26,7 @@ TRUSTWORTHINESS_SUBSAMPLE_SIZE = 5000
 # tied to the exact embedding on disk.
 SIDECAR_FIELDS_TO_COPY = (
     "explained_variance_ratio",
+    "explained_variance_ratio_diagnostic",
     "variance_explained_by_used_components",
     "diagnostic_fit_components",
     "components_needed_for_90pct_variance",

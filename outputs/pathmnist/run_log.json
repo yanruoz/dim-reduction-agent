@@ -1,0 +1,18 @@
+{
+  "dataset": "pathmnist",
+  "plan_revision": 1,
+  "methods": [
+    {
+      "name": "pca",
+      "status": "ok"
+    },
+    {
+      "name": "sparse_pca",
+      "status": "ok"
+    },
+    {
+      "name": "umap",
+      "status": "ok"
+    }
+  ]
+}

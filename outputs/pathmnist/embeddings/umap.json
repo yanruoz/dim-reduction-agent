@@ -1,0 +1,15 @@
+{
+  "method": "umap",
+  "hyperparameters": {
+    "n_neighbors": 30,
+    "min_dist": 0.1,
+    "n_components": 2,
+    "random_state": 0
+  },
+  "seed": 0,
+  "runtime_seconds": 114.177,
+  "embedding_shape": [
+    89996,
+    2
+  ]
+}

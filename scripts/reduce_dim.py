@@ -109,6 +109,9 @@ def _run_pca(X, hp, seed):
 
     return embedding, {
         "explained_variance_ratio": evr[:n_requested].tolist(),
+        # Full spectrum from the diagnostic fit (up to diagnostic_cap components),
+        # kept so a scree plot can show more than just the components used.
+        "explained_variance_ratio_diagnostic": evr.tolist(),
         "variance_explained_by_used_components": round(float(evr[:n_requested].sum()), 4),
         "diagnostic_fit_components": diagnostic_cap,
         "components_needed_for_90pct_variance": components_for_90pct,
@@ -137,7 +140,10 @@ def _run_sparse_pca(X, hp, seed):
 def _run_mds(X, hp, seed):
     from sklearn.manifold import MDS
 
-    model = MDS(n_components=hp.get("n_components", 2), random_state=seed, normalized_stress="auto")
+    # normalized_stress=True gives Kruskal's Stress-1, a scale-free number. sklearn's default
+    # ("auto") returns raw stress for metric MDS, which depends on the data's scale and can't
+    # be interpreted on its own. Supported for metric MDS since sklearn 1.7.
+    model = MDS(n_components=hp.get("n_components", 2), random_state=seed, normalized_stress=True)
     embedding = model.fit_transform(X)
     return embedding, {"stress": float(model.stress_)}
 
