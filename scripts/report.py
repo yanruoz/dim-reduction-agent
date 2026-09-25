@@ -381,6 +381,19 @@ if __name__ == "__main__":
             "The label silhouette column is a supervised sanity check only, computed on the embedding's own "
             "dimensions; it was never used to tune any hyperparameter."
         )
+        sil_sub = []
+        for m in plan["methods"]:
+            mp = out_dir / "metrics" / f"{m['name']}.json"
+            if mp.exists():
+                mj = json.loads(mp.read_text())
+                if mj.get("label_silhouette_subsampled"):
+                    sil_sub.append((m["name"], mj.get("label_silhouette_n_samples_used")))
+        if sil_sub:
+            limitation_lines.append(
+                f"The label silhouette was scored on a fixed-seed random subset of {sil_sub[0][1]:,} of "
+                f"{profile['n_samples']:,} samples (it is O(N^2)) for: {', '.join(n for n, _ in sil_sub)}. "
+                "Treat it as an estimate, not an exact full-dataset value."
+            )
     if profile.get("has_labels") is False:
         limitation_lines.append(
             "No ground-truth labels available for this dataset; embedding quality assessed only via "

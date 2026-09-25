@@ -53,15 +53,26 @@ def compute_trustworthiness(X, embedding, seed):
     return float(score), subsampled, X_used.shape[0]
 
 
-def compute_label_sanity_check(embedding, y):
+def compute_label_sanity_check(embedding, y, seed):
     """Silhouette score of the TRUE labels in embedding space. A supervised
     sanity check only, per CLAUDE.md: never used to tune hyperparameters,
-    and never computed at all if there are no labels (e.g. pbmc)."""
+    and never computed at all if there are no labels (e.g. pbmc). Silhouette
+    is O(N^2), so above the same size threshold as trustworthiness it is scored
+    on a fixed-seed random subsample. Returns (score, subsampled, n_used), or
+    (None, False, 0) when there is nothing to score."""
     from sklearn.metrics import silhouette_score
 
     if y is None or len(np.unique(y)) < 2:
-        return None
-    return float(silhouette_score(embedding, y))
+        return None, False, 0
+    n = embedding.shape[0]
+    if n > TRUSTWORTHINESS_SUBSAMPLE_THRESHOLD:
+        idx = np.random.default_rng(seed).choice(n, size=TRUSTWORTHINESS_SUBSAMPLE_SIZE, replace=False)
+        emb_used, y_used, subsampled = embedding[idx], np.asarray(y)[idx], True
+        if len(np.unique(y_used)) < 2:  # a subsample that lost every but one class can't be scored
+            return None, True, len(idx)
+    else:
+        emb_used, y_used, subsampled = embedding, y, False
+    return float(silhouette_score(emb_used, y_used)), subsampled, emb_used.shape[0]
 
 
 if __name__ == "__main__":
@@ -96,9 +107,11 @@ if __name__ == "__main__":
         "trustworthiness_n_samples_used": n_used,
     }
 
-    label_score = compute_label_sanity_check(embedding, y)
+    label_score, label_subsampled, label_n_used = compute_label_sanity_check(embedding, y, seed)
     if label_score is not None:
         metrics["label_silhouette_sanity_check"] = round(label_score, 4)
+        metrics["label_silhouette_subsampled"] = label_subsampled
+        metrics["label_silhouette_n_samples_used"] = label_n_used
         metrics["label_silhouette_note"] = (
             "Ground-truth-label silhouette in embedding space; a supervised sanity check only, "
             "never used to tune hyperparameters."
