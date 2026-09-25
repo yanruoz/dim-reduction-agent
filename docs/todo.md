@@ -8,10 +8,11 @@ Deadline: Mon 9/28, 11:59pm EST. Design details live in `docs/design.md`; this i
 - Both required datasets run end to end and produce `generated_report_1.pdf` / `generated_report_2.pdf`.
 - Generic loader: every dataset, including pbmc and pathmnist, loads the same way (csv/tsv/txt, npy, npz, h5ad), guided by a `## Loading` section in its `DATA_DESCRIPTION.md`; `fetch_data.py` handles downloads as a separate setup step. 
 - Missing values in numeric data (tested piece by piece): nan-aware profiler, `drop_missing_features` and `impute` steps, a runtime finite-check backstop, `validate_plan` guards (required, ordered, parameter checks, high-missing warning), extra NA tokens in the loader (feature columns only), report profile line and Limitations note. Checked end to end on a synthetic CSV with about 11% missing cells and a mostly-missing column.
+- Data-derived cluster coloring for unlabeled datasets (Track B, item 1): optional `clustering` block in `plan.json`, `cluster.py` (k-means on a general_purpose embedding, silhouette scan on a subsample), `validate_plan` guards (source must be general_purpose, k/k_range checks), `run_plan.py` runs figures last and redraws them when the coloring changes, report methods page and Limitations line. The label palette now covers more than 10 classes (tab20, then the 19 largest plus a gray "other"). Checked on pbmc: silhouette picked k=2 over the range 2-10, which is coarse; k_range [4,10] gave k=4 and separated the visible islands. The skill tells the agent to treat that as a stated judgment call.
 - 98 unit tests. Run with the project venv: `venv/bin/python -m unittest discover -s tests` (the anaconda `python` has no anndata, so 5 tests fail there).
 
 ## Next, in order
-1. **Fixes from the Scanpy PBMC3k comparison**, each tested rather than assumed: cluster on PCA and color unlabeled plots by those clusters; test gene scaling before PCA; rename or replace `select_hvg` (it is top-variance, not dispersion-based).
+1. **Remaining Scanpy-comparison fixes**, each tested rather than assumed: test gene scaling before PCA (`standardize` after `select_hvg` for count data); rename or replace `select_hvg` (it is top-variance, not dispersion-based); subsample the silhouette in `evaluate.py`.
 2. `README.md` (architecture, decision-making, how to run it).
 3. First real single-prompt runs (pbmc, then pathmnist), unattended.
 4. Manual 4-page `report.pdf`.

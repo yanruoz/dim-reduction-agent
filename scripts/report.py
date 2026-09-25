@@ -216,6 +216,34 @@ if __name__ == "__main__":
         heading = f"{m['name']}  (role: {m['role']}, status: {status})"
         hp_str = ", ".join(f"{k}={v}" for k, v in m.get("hyperparameters", {}).items())
         method_blocks.append((heading, [f"Hyperparameters: {hp_str}", m.get("reason", "")]))
+    # Data-derived clusters (only colors unlabeled plots); every number comes from metrics/clustering.json
+    clustering = None
+    clustering_path = out_dir / "metrics" / "clustering.json"
+    if plan.get("clustering") and clustering_path.exists():
+        clustering = json.loads(clustering_path.read_text())
+        block = plan["clustering"]
+        scan = ", ".join(f"k={k}: {v:.3f}" for k, v in clustering["silhouette_by_k"].items() if v is not None)
+        how_k = (
+            f"k={clustering['k']} was fixed in the plan."
+            if clustering["k_was_fixed"]
+            else (
+                f"k={clustering['k']} was chosen as the value with the highest silhouette among "
+                f"k={clustering['params']['k_range'][0]} to {clustering['params']['k_range'][1]} ({scan})."
+            )
+        )
+        scored = (
+            f" Silhouette was scored on a fixed-seed subsample of {clustering['n_scored']:,} of {clustering['n_samples']:,} samples."
+            if clustering["silhouette_subsampled"] else ""
+        )
+        method_blocks.append((
+            f"Data-derived clusters (k-means on {block['source']}; colors only)",
+            [
+                f"{how_k}{scored} Cluster sizes: {', '.join(f'{c:,}' for c in clustering['cluster_sizes'])}. "
+                "These clusters only color the plots of an unlabeled dataset; they are a description of the "
+                "embedding, not a finding, and no biological or domain meaning is attached to them.",
+                block.get("reason", ""),
+            ],
+        ))
     pages.extend(text_pages("Methods and hyperparameters", method_blocks))
 
     # --- Metrics table page ---
@@ -357,6 +385,13 @@ if __name__ == "__main__":
         limitation_lines.append(
             "No ground-truth labels available for this dataset; embedding quality assessed only via "
             "label-free trustworthiness, no supervised sanity check possible."
+        )
+    if clustering is not None:
+        limitation_lines.append(
+            f"The cluster colors on unlabeled plots come from k-means (k={clustering['k']}) on the "
+            f"{plan['clustering']['source']} embedding, with k picked by silhouette rather than validated against any "
+            "ground truth. Different k, a different algorithm, or a different source embedding would color the "
+            "same points differently; treat the colors as a visual aid, not as groups that are known to exist."
         )
     if profile.get("has_missing"):
         steps = [p_["step"] for p_ in plan.get("preprocessing", [])]

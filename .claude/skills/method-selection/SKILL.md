@@ -22,6 +22,7 @@ description: Pick 2-4 dimension-reduction methods and their hyperparameters give
       "reason": "..."
     }
   ],
+  "clustering": {"source": "pca", "algorithm": "kmeans", "k_range": [2, 10], "reason": "..."},
   "evaluation": {"quantitative": ["trustworthiness"], "qualitative": ["seed_stability_check"]},
   "seed": 0,
   "revision": 1,
@@ -31,9 +32,21 @@ description: Pick 2-4 dimension-reduction methods and their hyperparameters give
 
 - `preprocessing`: from `data-profiling/SKILL.md`, already decided before this skill runs.
 - `methods`: this skill's job, see below. `name` must be in `plan_schema.ALLOWED_METHODS`; `role` must exactly match that method's fixed entry in `plan_schema.METHOD_ROLES` (see next section), `validate_plan.py` rejects a mismatch, it is not a free-text field.
+- `clustering`: optional, see "Coloring unlabeled plots" below.
 - `evaluation`: informational only, states your intended evaluation approach for the eventual report. `evaluate.py` computes its own fixed metrics per method regardless of what's listed here (trustworthiness for any embedding, explained variance ratio for PCA-family methods, stress for MDS, etc.); this field doesn't control that, it's a note to yourself and to the reporting step about what to emphasize.
 - `seed`: one integer for the whole plan; every method's own `random_state` hyperparameter, if it has one, must equal this (`validate_plan.py` warns if not).
 - `revision`/`critique_applied`: start at `1`/`null`; only touched by the one-time critique-and-revise loop (step 7 of CLAUDE.md), if that stage exists yet.
+
+## Coloring unlabeled plots (`clustering` block)
+
+Without labels, every plot is a single-color density scatter. If `profile.json` has `has_labels: false`, add a `clustering` block so `run_plan.py` colors the plots by data-derived clusters. If the dataset has labels, leave it out: labels color the plots and the clusters would go unused (`validate_plan.py` warns).
+
+- `source`: a method already in this plan whose role is `general_purpose`, normally `pca`. `validate_plan.py` rejects a `visualization_only` or local-structure source, and `cluster.py` refuses it again at run time: UMAP/t-SNE embeddings never feed clustering (CLAUDE.md Guard rails).
+- `algorithm`: `kmeans` only.
+- `k_range`: `[low, high]`, default `[2, 10]`; `k` (optional) fixes the number of clusters and skips the scan. With no `k`, `cluster.py` picks the k with the highest silhouette on a fixed-seed subsample of at most 5,000 points.
+- `reason`: required, dataset-specific, like every other entry.
+- **Silhouette favors coarse splits.** It often scores the lowest k in the range best, which colors an obviously multi-group embedding with two colors. Look at `metrics/clustering.json` after the run: if the chosen k equals the range's lower bound and the figures show more visible structure than that, choosing a higher lower bound (or a fixed `k`) is a judgment call. If you make it, say so in the `reason`, name the alternatives (default range, fixed k) and why you picked this one (rule 11), and revise the plan and rerun. The report prints the scanned range and every silhouette value either way.
+- The clusters are a description of the embedding for coloring only. They are not evaluated against anything, and `findings.md` may call them "data-derived clusters" but must not name cell types or other real-world classes.
 
 ## Method roles: not a competition
 
