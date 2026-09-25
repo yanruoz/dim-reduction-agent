@@ -1,0 +1,47 @@
+{
+  "check": "all",
+  "passed": true,
+  "errors": [],
+  "checks": [
+    {
+      "module": "numpy",
+      "ok": true
+    },
+    {
+      "module": "pandas",
+      "ok": true
+    },
+    {
+      "module": "scipy",
+      "ok": true
+    },
+    {
+      "module": "sklearn",
+      "ok": true
+    },
+    {
+      "module": "scanpy",
+      "ok": true
+    },
+    {
+      "module": "anndata",
+      "ok": true
+    },
+    {
+      "module": "umap",
+      "ok": true
+    },
+    {
+      "module": "matplotlib",
+      "ok": true
+    },
+    {
+      "module": "medmnist",
+      "ok": true
+    },
+    {
+      "module": "matplotlib.backends.backend_pdf",
+      "ok": true
+    }
+  ]
+}

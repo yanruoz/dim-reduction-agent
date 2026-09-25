@@ -54,7 +54,7 @@ PCA (always include as a baseline), at least one PCA variant (e.g. Kernel PCA or
 
 ## Required execution sequence
 
-1. **Locate and read.** Find `data/<dataset>/DATA_DESCRIPTION.md` and the data file(s) it points to. Run `python scripts/doctor.py --check core` first; if a required package or file is missing, stop here, document exactly what's missing in your response, and don't proceed to profiling.
+1. **Locate and read.** Find `data/<dataset>/DATA_DESCRIPTION.md` and the data file(s) it points to. Run `python scripts/doctor.py --check core --dataset <dataset>` first; if a required package or file is missing, stop here, document exactly what's missing in your response, and don't proceed to profiling.
 2. **Profile.** `python scripts/profiler.py --dataset <dataset> --out outputs/<dataset>/profile.json`. Read the resulting `profile.json` and `profile_summary.md`.
 3. **Consult skills.** Read `.claude/skills/data-profiling/SKILL.md` to decide preprocessing, then `.claude/skills/method-selection/SKILL.md` to pick methods and hyperparameters.
 4. **Write the plan.** Write `outputs/<dataset>/plan.json` (schema and decision logic live in `method-selection/SKILL.md`, not here). Every preprocessing step and every method needs a `reason` grounded in `profile.json`/`DATA_DESCRIPTION.md`.
@@ -94,7 +94,7 @@ Run any script with `--help` for its current, authoritative flags; this is the t
 
 | Script | Invocation | Produces |
 |---|---|---|
-| `scripts/doctor.py` | `--check {core,report,all}` (default `all`) | pass/fail + JSON+Markdown report: `core` checks required packages import and `data/<dataset>/DATA_DESCRIPTION.md` exists; `report` checks the report-rendering dependency separately, so a missing one never blocks profiling/reduction/evaluation |
+| `scripts/doctor.py` | `--check {core,report,all}` (default `all`), optional `--dataset <name>` | pass/fail + JSON+Markdown report: `core` checks required packages import, and (only if `--dataset` given) that `data/<dataset>/DATA_DESCRIPTION.md` exists; `report` checks the report-rendering dependency separately, so a missing one never blocks profiling/reduction/evaluation |
 | `scripts/profiler.py` | `--dataset <name> --out outputs/<dataset>/profile.json` | `profile.json` + `profile_summary.md` |
 | `scripts/reduce_dim.py` | `--dataset <name> --method <name> --params '<json>' --seed <int>` | `outputs/<dataset>/embeddings/<method>.npy` + sidecar params JSON |
 | `scripts/evaluate.py` | `--dataset <name> --method <name>` | `outputs/<dataset>/metrics/<method>.json`: trustworthiness (subsampled above 5,000 samples, documented), method-specific diagnostics pulled from `reduce_dim.py`'s sidecar JSON, and a labels-based sanity check if labels exist. Reconstructs the preprocessed data itself from `plan.json` + `loaders.py`; there is no separate `--X`/`--labels` flag |
