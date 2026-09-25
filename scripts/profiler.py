@@ -10,22 +10,67 @@ import numpy as np
 from loaders import load_dataset
 
 
+TOP_MISSING_FEATURES = 5
+
+
+def _missing_details(missing, metadata):
+    """Per-feature/sample missing-value summary. `missing` is the boolean
+    (n_samples, n_features) mask; only computed when something is missing."""
+    n_samples, n_features = missing.shape
+    per_feature = missing.mean(axis=0)  # (n_features,) fraction missing per feature
+    names = (metadata or {}).get("feature_names")
+    if not (isinstance(names, (list, tuple)) and len(names) == n_features):
+        names = list(range(n_features))
+    worst = np.argsort(-per_feature, kind="stable")[:TOP_MISSING_FEATURES]
+    return {
+        "n_features_with_missing": int((per_feature > 0).sum()),
+        "n_samples_with_missing": int(missing.any(axis=1).sum()),
+        "n_features_all_missing": int((per_feature == 1.0).sum()),
+        "max_feature_missing_fraction": round(float(per_feature.max()), 4),
+        "top_missing_features": [
+            {"feature": names[i] if isinstance(names[i], int) else str(names[i]),
+             "missing_fraction": round(float(per_feature[i]), 4)}
+            for i in worst
+            if per_feature[i] > 0
+        ],
+    }
+
+
 def profile_dataset(X, y=None, metadata=None):
     n_samples, n_features = X.shape
 
-    sparsity = float(np.mean(X == 0))
-    has_missing = bool(np.isnan(X).any())
+    missing = np.isnan(X)  # (n_samples, n_features)
+    n_missing = int(np.count_nonzero(missing))
+    n_observed = X.size - n_missing
+
+    if n_missing == 0:
+        sparsity = float(np.mean(X == 0))
+        value_range = [float(np.min(X)), float(np.max(X))]
+        mean, std = float(np.mean(X)), float(np.std(X))
+    elif n_observed == 0:
+        # Every value missing: no statistics exist; report null rather than nan (invalid JSON).
+        sparsity, value_range, mean, std = None, None, None, None
+    else:
+        # Statistics over observed values only, so one NaN doesn't poison every number
+        # (and sparsity is the share of zeros among observed cells, not among all cells).
+        sparsity = float(np.count_nonzero(X == 0)) / n_observed
+        value_range = [float(np.nanmin(X)), float(np.nanmax(X))]
+        mean, std = float(np.nanmean(X)), float(np.nanstd(X))
 
     profile = {
         "n_samples": n_samples,
         "n_features": n_features,
-        "sparsity": round(sparsity, 4),
-        "has_missing": has_missing,
-        "value_range": [float(np.min(X)), float(np.max(X))],
-        "mean": float(np.mean(X)),
-        "std": float(np.std(X)),
+        "sparsity": None if sparsity is None else round(sparsity, 4),
+        "has_missing": n_missing > 0,
+        "n_missing_cells": n_missing,
+        "missing_fraction": round(n_missing / max(X.size, 1), 6),
+        "value_range": value_range,
+        "mean": mean,
+        "std": std,
         "has_labels": y is not None,
     }
+    if n_missing > 0:
+        profile.update(_missing_details(missing, metadata))
 
     if y is not None:
         profile["n_classes"] = int(len(np.unique(y)))
@@ -36,16 +81,42 @@ def profile_dataset(X, y=None, metadata=None):
     return profile
 
 
+def _fmt(value, spec):
+    return "n/a" if value is None else format(value, spec)
+
+
+def _missing_text(profile):
+    if not profile["has_missing"]:
+        return "No"
+    worst = profile.get("top_missing_features") or []
+    text = (
+        f"Yes: {profile['missing_fraction'] * 100:.2f}% of cells ({profile['n_missing_cells']:,}); "
+        f"{profile['n_features_with_missing']:,} of {profile['n_features']:,} features and "
+        f"{profile['n_samples_with_missing']:,} of {profile['n_samples']:,} samples affected"
+    )
+    if worst:
+        text += f"; worst feature {worst[0]['feature']!r} at {worst[0]['missing_fraction'] * 100:.1f}%"
+    if profile.get("n_features_all_missing"):
+        text += f"; {profile['n_features_all_missing']} feature(s) entirely missing"
+    return text
+
+
+def _range_text(profile):
+    vr = profile["value_range"]
+    return "n/a" if vr is None else f"[{vr[0]:.2f}, {vr[1]:.2f}]"
+
+
 def print_profile(name, profile):
     print(f"\n{'='*50}")
     print(f"  Dataset: {name}")
     print(f"{'='*50}")
     print(f"  Samples:        {profile['n_samples']:,}")
     print(f"  Features:       {profile['n_features']:,}")
-    print(f"  Sparsity:       {profile['sparsity']*100:.1f}% zeros")
-    print(f"  Missing values: {'Yes' if profile['has_missing'] else 'No'}")
-    print(f"  Value range:    [{profile['value_range'][0]:.2f}, {profile['value_range'][1]:.2f}]")
-    print(f"  Mean / Std:     {profile['mean']:.3f} / {profile['std']:.3f}")
+    sp = profile["sparsity"]
+    print(f"  Sparsity:       {'n/a' if sp is None else f'{sp*100:.1f}% zeros'}")
+    print(f"  Missing values: {_missing_text(profile)}")
+    print(f"  Value range:    {_range_text(profile)}")
+    print(f"  Mean / Std:     {_fmt(profile['mean'], '.3f')} / {_fmt(profile['std'], '.3f')}")
     print(f"  Has labels:     {'Yes (' + str(profile['n_classes']) + ' classes)' if profile['has_labels'] else 'No'}")
 
     if "metadata" in profile:
@@ -66,12 +137,14 @@ def write_profile_summary_md(name, profile, path):
     lines = [f"# Profile summary: {name}", ""]
     lines.append(f"- **Samples:** {profile['n_samples']:,}")
     lines.append(f"- **Features:** {profile['n_features']:,}")
-    lines.append(f"- **Sparsity:** {profile['sparsity'] * 100:.1f}% zeros")
-    lines.append(f"- **Missing values:** {'Yes' if profile['has_missing'] else 'No'}")
-    lines.append(
-        f"- **Value range:** [{profile['value_range'][0]:.2f}, {profile['value_range'][1]:.2f}]"
-    )
-    lines.append(f"- **Mean / Std:** {profile['mean']:.3f} / {profile['std']:.3f}")
+    sp = profile["sparsity"]
+    lines.append(f"- **Sparsity:** {'n/a' if sp is None else f'{sp * 100:.1f}% zeros'}")
+    lines.append(f"- **Missing values:** {_missing_text(profile)}")
+    if profile.get("top_missing_features"):
+        worst = ", ".join(f"`{t['feature']}` {t['missing_fraction'] * 100:.1f}%" for t in profile["top_missing_features"])
+        lines.append(f"- **Most-missing features:** {worst}")
+    lines.append(f"- **Value range:** {_range_text(profile)}")
+    lines.append(f"- **Mean / Std:** {_fmt(profile['mean'], '.3f')} / {_fmt(profile['std'], '.3f')}")
     if profile["has_labels"]:
         lines.append(f"- **Labels:** Yes ({profile['n_classes']} classes)")
     else:
@@ -110,7 +183,7 @@ if __name__ == "__main__":
     print_profile(args.dataset, profile)
 
     with open(out_path, "w") as f:
-        json.dump(profile, f, indent=2)
+        json.dump(profile, f, indent=2, allow_nan=False)
 
     md_path = out_path.with_name("profile_summary.md")
     write_profile_summary_md(args.dataset, profile, md_path)

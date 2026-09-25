@@ -3,6 +3,8 @@
   "n_features": 2352,
   "sparsity": 0.0001,
   "has_missing": false,
+  "n_missing_cells": 0,
+  "missing_fraction": 0.0,
   "value_range": [
     0.0,
     255.0
