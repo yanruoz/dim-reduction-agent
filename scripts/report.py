@@ -17,6 +17,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
+from profiler import _missing_text
+
 PAGE_SIZE = (8.5, 11)
 WRAP_WIDTH = 85
 MIN_Y_BEFORE_TRUNCATE = 0.06
@@ -196,11 +198,13 @@ if __name__ == "__main__":
     )
 
     # --- Profile + preprocessing page ---
+    sparsity_text = "n/a" if profile["sparsity"] is None else f"{profile['sparsity'] * 100:.1f}%"
     summary_line = (
-        f"Samples: {profile['n_samples']:,}   Features: {profile['n_features']:,}   "
-        f"Sparsity: {profile['sparsity'] * 100:.1f}%   Missing values: {'Yes' if profile['has_missing'] else 'No'}"
+        f"Samples: {profile['n_samples']:,}   Features: {profile['n_features']:,}   Sparsity: {sparsity_text}"
     )
-    preprocessing_blocks = [(None, [what_this_is, summary_line])]
+    # Missing-value detail (counts, worst feature) comes from the profile so the report never restates it by hand
+    profile_lines = [what_this_is, summary_line, f"Missing values: {_missing_text(profile)}"]
+    preprocessing_blocks = [(None, profile_lines)]
     for step in plan.get("preprocessing", []):
         preprocessing_blocks.append((f"Preprocessing: {step['step']}", [step.get("reason", "")]))
     pages.extend(text_pages("Dataset profile & preprocessing", preprocessing_blocks))
@@ -353,6 +357,15 @@ if __name__ == "__main__":
         limitation_lines.append(
             "No ground-truth labels available for this dataset; embedding quality assessed only via "
             "label-free trustworthiness, no supervised sanity check possible."
+        )
+    if profile.get("has_missing"):
+        steps = [p_["step"] for p_ in plan.get("preprocessing", [])]
+        limitation_lines.append(
+            f"{profile['missing_fraction'] * 100:.2f}% of the input cells were missing"
+            + (" and were filled by the 'impute' step" if "impute" in steps else "")
+            + (" after dropping mostly-missing features" if "drop_missing_features" in steps else "")
+            + ". Single-value imputation understates uncertainty and pulls filled samples toward the feature centre, "
+            "which can shrink apparent structure; if values are missing not at random, every method sees a biased fill."
         )
     if not findings:
         limitation_lines.append("No written interpretation (findings.md) was supplied for this run; the pages above are numbers and figures only.")

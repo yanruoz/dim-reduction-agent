@@ -9,7 +9,7 @@ By the time this is read, `outputs/<dataset>/profile.json` and `data/<dataset>/D
 
 ## Available steps
 
-Exactly five, implemented in `scripts/reduce_dim.py`'s `PREPROCESSORS` registry (`plan_schema.KNOWN_PREPROCESSING_STEPS`). Never invent a step name outside this list; `validate_plan.py` rejects anything else.
+Exactly seven, implemented in `scripts/reduce_dim.py`'s `PREPROCESSORS` registry (`plan_schema.KNOWN_PREPROCESSING_STEPS`). Never invent a step name outside this list; `validate_plan.py` rejects anything else.
 
 | Step | What it does | Params |
 |---|---|---|
@@ -18,10 +18,19 @@ Exactly five, implemented in `scripts/reduce_dim.py`'s `PREPROCESSORS` registry 
 | `select_hvg` | Keeps the `n_top_genes` columns with the highest variance (generic top-variance feature selection; the name is descriptive, not gene-specific) | `n_top_genes` |
 | `standardize` | Zero mean, unit variance per feature | none |
 | `scale_unit_range` | Rescales to `[0, 1]` | optional `min`, `max` |
+| `drop_missing_features` | Removes features whose missing fraction exceeds `max_fraction`; always removes entirely-missing features | optional `max_fraction` (default 0.5, must be in [0, 1)) |
+| `impute` | Fills each missing value with a per-feature statistic computed over observed values | optional `strategy` (`median` default, `mean`, `constant`), `fill_value` for `constant` (default 0) |
 
 ## Decision tree
 
-Work through these in order; more than one can apply to the same dataset.
+Work through these in order, starting with step 0 (missing values); more than one can apply to the same dataset. In the written plan, missing-value steps go first, then steps 1-4 as they apply.
+
+0. **Missing values come first** (`profile.json`'s `has_missing` is `true`). Numeric data only; the loader refuses non-numeric columns. Every method needs finite input, and `validate_plan.py` fails a plan that leaves missing values unhandled or puts these steps out of order. They must be the first steps in the list.
+   - If any feature is entirely missing (`n_features_all_missing > 0`), or some features are mostly missing, add `drop_missing_features` first. Choose `max_fraction` from `top_missing_features` and `max_feature_missing_fraction` in the profile; say in the reason which features it removes and why that threshold. Dropping is a judgment call (alternatives: keep and impute, or a stricter cutoff), so label it as one (rule 11).
+   - Then add `impute`. Default `median` because it is robust to the skew and outliers common in real measurements; use `mean` only if the description says values are symmetric, and `constant` only if the description says a missing value means a real zero (e.g. an absent count). Cite `missing_fraction` and `n_features_with_missing` in the reason.
+   - If `missing_fraction` exceeds 0.2, `validate_plan.py` warns. The reason must then say why proceeding is still sound, or the plan should say the results are weak.
+   - Limitation to state in the reasons and the report: single-value imputation understates uncertainty and pulls imputed samples toward the feature centre, which can shrink apparent structure. Missing-not-at-random data (missingness that depends on the value or on group) will be biased by any of these fills.
+   - If `has_missing` is `false`, add neither step.
 
 1. **Count-like data?** Non-negative, integer-valued, high sparsity in `profile.json`, and/or `DATA_DESCRIPTION.md` says the values are counts, reads, or UMIs. The description is the authority here; the loader supplies no modality hint, since every dataset is loaded the same way.
    - If yes: `normalize_total` then `log1p`, in that order. Cite the actual sparsity percentage and/or value range from `profile.json` in the reason (e.g. "97.4% sparse raw UMI counts per profile.json; normalizing removes per-cell sequencing-depth differences before log-compressing the heavy tail").
@@ -36,8 +45,6 @@ Work through these in order; more than one can apply to the same dataset.
 
 4. **Dense, continuous, no natural bound, varying per-feature scales?** Not covered by 1 or 3.
    - If yes: `standardize`.
-
-5. **Missing values** (`profile.json`'s `has_missing` is `true`): no imputation step exists in this pipeline. State this explicitly as a limitation in the plan's reasoning and later in the report, rather than silently proceeding or letting a method crash unexplained on NaN input. If a method then fails on this dataset, that failure is expected and should be documented via the Fallback rules in `CLAUDE.md`, not treated as a surprise bug.
 
 ## Output
 

@@ -117,6 +117,35 @@ class TestTabular(LoaderTestCase):
             loaders.load_dataset("t")
 
 
+class TestMissingTokens(LoaderTestCase):
+    def test_common_missing_spellings_become_nan_in_feature_columns(self):
+        folder = self.make("t")
+        (folder / "d.csv").write_text("a,b,c\n1,?,3\n-,5,--\nna,6,none\n4,missing,.\n7,8,9\n")
+        X, _, _ = loaders.load_dataset("t")
+        self.assertEqual(X.shape, (5, 3))
+        self.assertEqual(int(np.isnan(X).sum()), 7)
+        self.assertEqual(X[4].tolist(), [7, 8, 9])  # a fully observed row is untouched
+
+    def test_pandas_default_tokens_still_work(self):
+        folder = self.make("t")
+        (folder / "d.csv").write_text("a,b\n1,\n2,NaN\n3,NA\n")
+        X, _, _ = loaders.load_dataset("t")
+        self.assertEqual(int(np.isnan(X[:, 1]).sum()), 3)
+
+    def test_label_and_id_columns_are_not_touched_by_the_extra_tokens(self):
+        folder = self.make("t", "## Loading\nlabel_column: grp\nid_column: sid\n")
+        (folder / "d.csv").write_text("sid,f1,grp\n-,1,none\n?,2,-\nna,3,?\n")
+        X, y, _ = loaders.load_dataset("t")
+        self.assertEqual(list(y), ["none", "-", "?"])
+        self.assertFalse(np.isnan(X).any())
+
+    def test_a_column_that_is_mostly_text_is_still_refused(self):
+        folder = self.make("t")
+        (folder / "d.csv").write_text("a,b\n1,red\n2,blue\n3,?\n")
+        with self.assertRaisesRegex(ValueError, "non-numeric feature columns"):
+            loaders.load_dataset("t")
+
+
 class TestArrays(LoaderTestCase):
     def test_npy_2d_and_higher_dim_is_flattened_with_shape_recorded(self):
         folder = self.make("a")

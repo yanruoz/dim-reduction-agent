@@ -30,6 +30,7 @@ GENERIC_EXTENSIONS = {".csv", ".tsv", ".txt", ".npy", ".npz", ".h5ad"}
 LOADING_KEYS = {"file", "label_column", "id_column", "delimiter", "x_key", "y_key", "url", "md5"}
 # A dense float64 matrix bigger than this is refused with a clear message
 # instead of letting the process run out of memory partway through.
+EXTRA_NA_TOKENS = ["?", "-", "--", ".", "na", "none", "missing"]  # feature columns only, see _read_delimited
 MAX_DENSE_BYTES = 4 * 10**9
 
 
@@ -111,10 +112,17 @@ def _read_delimited(path, spec):
     elif delimiter.lower() in ("\\t", "tab"):
         delimiter = "\t"
 
-    try:
-        return pd.read_csv(path, sep=delimiter)
-    except UnicodeDecodeError:
-        return pd.read_csv(path, sep=delimiter, encoding="latin-1")
+    # Common "missing" spellings beyond pandas' defaults (which already cover "", NA, NaN, null, ...).
+    # Applied to feature columns only, so a label class that happens to be spelled "none" or "-" stays a label.
+    protected = {spec.get("label_column"), spec.get("id_column")}
+    for encoding in ("utf-8", "latin-1"):
+        try:
+            header = pd.read_csv(path, sep=delimiter, nrows=0, encoding=encoding)
+            na_values = {c: EXTRA_NA_TOKENS for c in header.columns if c not in protected}
+            return pd.read_csv(path, sep=delimiter, encoding=encoding, na_values=na_values)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(f"Could not decode {path.name} as utf-8 or latin-1")
 
 
 def _load_table(path, spec):
