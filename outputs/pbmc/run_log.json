@@ -4,11 +4,11 @@
   "methods": [
     {
       "name": "pca",
-      "status": "reused"
+      "status": "ok"
     },
     {
       "name": "umap",
-      "status": "reused"
+      "status": "ok"
     }
   ]
 }

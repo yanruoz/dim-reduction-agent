@@ -20,10 +20,6 @@
       "ok": true
     },
     {
-      "module": "scanpy",
-      "ok": true
-    },
-    {
       "module": "anndata",
       "ok": true
     },
@@ -36,11 +32,11 @@
       "ok": true
     },
     {
-      "module": "medmnist",
+      "module": "data/pbmc/DATA_DESCRIPTION.md",
       "ok": true
     },
     {
-      "module": "data/pathmnist/DATA_DESCRIPTION.md",
+      "module": "data/pbmc/pbmc3k_raw.h5ad",
       "ok": true
     }
   ]

@@ -7,9 +7,8 @@
 - OK: pandas
 - OK: scipy
 - OK: sklearn
-- OK: scanpy
 - OK: anndata
 - OK: umap
 - OK: matplotlib
-- OK: medmnist
-- OK: data/pathmnist/DATA_DESCRIPTION.md
+- OK: data/pbmc/DATA_DESCRIPTION.md
+- OK: data/pbmc/pbmc3k_raw.h5ad

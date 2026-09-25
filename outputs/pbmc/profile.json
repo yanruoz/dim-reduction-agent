@@ -7,12 +7,13 @@
     0.0,
     419.0
   ],
-  "mean": 0.07229825854301453,
-  "std": 1.1294755935668945,
+  "mean": 0.07229825799897277,
+  "std": 1.1294755209872582,
   "has_labels": false,
   "metadata": {
-    "source": "pbmc3k",
-    "modality": "single_cell_rna_seq",
+    "source": "pbmc3k_raw",
+    "source_file": "pbmc3k_raw.h5ad",
+    "modality": "annotated_matrix",
     "feature_names": [
       "MIR1302-10",
       "FAM138A",

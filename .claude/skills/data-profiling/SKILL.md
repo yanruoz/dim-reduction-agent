@@ -23,7 +23,7 @@ Exactly five, implemented in `scripts/reduce_dim.py`'s `PREPROCESSORS` registry 
 
 Work through these in order; more than one can apply to the same dataset.
 
-1. **Count-like data?** Non-negative values, high sparsity, `DATA_DESCRIPTION.md` mentions counts/reads/UMIs, or `profile.json`'s `metadata.modality` suggests sequencing/count data.
+1. **Count-like data?** Non-negative, integer-valued, high sparsity in `profile.json`, and/or `DATA_DESCRIPTION.md` says the values are counts, reads, or UMIs. The description is the authority here; the loader supplies no modality hint, since every dataset is loaded the same way.
    - If yes: `normalize_total` then `log1p`, in that order. Cite the actual sparsity percentage and/or value range from `profile.json` in the reason (e.g. "97.4% sparse raw UMI counts per profile.json; normalizing removes per-cell sequencing-depth differences before log-compressing the heavy tail").
    - If `DATA_DESCRIPTION.md` says normalization was already applied upstream, skip this and say so; never double-normalize.
 

@@ -126,6 +126,32 @@ def parse_what_this_is(desc_path):
     return " ".join(section.strip().split())
 
 
+def parse_findings(text):
+    """findings.md -> [(heading_or_None, [paragraphs])]. Blank lines separate
+    paragraphs; a line starting with '## ' starts a new headed block."""
+    blocks, heading, paragraphs, buf = [], None, [], []
+
+    def flush_paragraph():
+        if buf:
+            paragraphs.append(" ".join(buf))
+            buf.clear()
+
+    for line in text.splitlines():
+        if line.startswith("## "):
+            flush_paragraph()
+            if heading is not None or paragraphs:
+                blocks.append((heading, list(paragraphs)))
+            heading, paragraphs = line[3:].strip(), []
+        elif not line.strip():
+            flush_paragraph()
+        else:
+            buf.append(line.strip())
+    flush_paragraph()
+    if heading is not None or paragraphs:
+        blocks.append((heading, list(paragraphs)))
+    return blocks
+
+
 def fmt_metric(value):
     if isinstance(value, float):
         return f"{value:.4f}"
@@ -152,6 +178,12 @@ if __name__ == "__main__":
 
     critique_path = out_dir / "critique.json"
     critique = json.loads(critique_path.read_text()) if critique_path.exists() else None
+
+    # Written interpretation is the one part of the report an agent authors
+    # (see .claude/skills/reporting/SKILL.md); everything else is generated
+    # mechanically from artifacts. Optional so report.py still runs without it.
+    findings_path = out_dir / "findings.md"
+    findings = findings_path.read_text() if findings_path.exists() else None
 
     pages = []
 
@@ -283,6 +315,10 @@ if __name__ == "__main__":
         if scree_path.exists():
             pages.append(figure_page(scree_path, f"{args.dataset}: {m['name']} scree"))
 
+    # --- Findings and interpretation, if the agent wrote one ---
+    if findings:
+        pages.extend(text_pages("Findings and interpretation", parse_findings(findings)))
+
     # --- Critique page, if present ---
     if critique:
         pages.append(text_page("Critique and revision", [(None, [json.dumps(critique, indent=2)])]))
@@ -318,6 +354,8 @@ if __name__ == "__main__":
             "No ground-truth labels available for this dataset; embedding quality assessed only via "
             "label-free trustworthiness, no supervised sanity check possible."
         )
+    if not findings:
+        limitation_lines.append("No written interpretation (findings.md) was supplied for this run; the pages above are numbers and figures only.")
     if not critique:
         limitation_lines.append("No adversarial critique/revision pass was performed for this run (critic subagent not yet built).")
     if not limitation_lines:

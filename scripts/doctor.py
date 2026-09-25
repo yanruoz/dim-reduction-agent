@@ -9,7 +9,9 @@ import json
 import sys
 from pathlib import Path
 
-CORE_PACKAGES = ["numpy", "pandas", "scipy", "sklearn", "scanpy", "anndata", "umap", "matplotlib", "medmnist"]
+import loaders
+
+CORE_PACKAGES = ["numpy", "pandas", "scipy", "sklearn", "anndata", "umap", "matplotlib"]
 REPORT_PACKAGES = ["matplotlib.backends.backend_pdf"]
 
 
@@ -29,11 +31,26 @@ def check_core(dataset=None):
     errors = [f"Cannot import '{c['module']}': {c['error']}" for c in checks if not c["ok"]]
 
     if dataset:
-        desc_path = Path("data") / dataset / "DATA_DESCRIPTION.md"
+        folder = loaders.DATA_ROOT / dataset
+        desc_path = folder / "DATA_DESCRIPTION.md"
         exists = desc_path.exists()
-        checks.append({"module": str(desc_path), "ok": exists})
+        checks.append({"module": f"data/{dataset}/DATA_DESCRIPTION.md", "ok": exists})
         if not exists:
             errors.append(f"Missing {desc_path}")
+        else:
+            # The data file itself: resolvable per the '## Loading' section (or the single
+            # data file in the folder). If missing but a url is declared, say how to get it.
+            spec = {}
+            try:
+                spec = loaders.parse_loading_spec(desc_path)
+                data_file = loaders._find_data_file(folder, spec)
+                checks.append({"module": f"data/{dataset}/{data_file.name}", "ok": True})
+            except ValueError as e:
+                hint = ""
+                if "url" in spec:
+                    hint = f" A url is declared: run `python scripts/fetch_data.py --dataset {dataset}`."
+                checks.append({"module": f"data file for {dataset}", "ok": False})
+                errors.append(f"{e}{hint}")
 
     return errors, checks
 

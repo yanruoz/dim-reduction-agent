@@ -1,4 +1,4 @@
-# Profile summary: pbmc3k
+# Profile summary: pbmc
 
 - **Samples:** 2,700
 - **Features:** 32,738
@@ -9,6 +9,7 @@
 - **Labels:** No
 
 ## Metadata
-- **source:** pbmc3k
-- **modality:** single_cell_rna_seq
+- **source:** pbmc3k_raw
+- **source_file:** pbmc3k_raw.h5ad
+- **modality:** annotated_matrix
 - **feature_names:** `'MIR1302-10'`, `'FAM138A'`, ... (32738 total)

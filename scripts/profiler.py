@@ -94,7 +94,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Profile a dataset; writes profile.json + profile_summary.md."
     )
-    parser.add_argument("--dataset", required=True, help="Dataset name registered in loaders.LOADERS")
+    parser.add_argument("--dataset", required=True, help="Dataset name: a folder under data/")
     parser.add_argument(
         "--out",
         default=None,

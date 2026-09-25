@@ -10,5 +10,6 @@
 
 ## Metadata
 - **source:** pathmnist
-- **modality:** image
+- **source_file:** pathmnist.npz
+- **modality:** array
 - **image_shape:** (28, 28, 3)

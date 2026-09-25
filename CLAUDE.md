@@ -45,6 +45,7 @@ This repository may be run by a fresh Claude Code session, with no memory of how
 - **If no dataset is named:** stop immediately and say so. Do not guess which dataset to analyze, and do not default to the first one found under `data/`.
 - **Report number:** if the prompt gives one, use it. Otherwise, count existing `reports/*/generated_report_*.pdf` files across the repo and use the next integer starting at 1.
 - **Missing `DATA_DESCRIPTION.md`:** stop and say so plainly rather than guessing at a dataset's contents from the raw file alone.
+- **How datasets are loaded:** every dataset, including pbmc and pathmnist, goes through the same generic loader; there is no per-dataset code. Any folder under `data/` can be loaded (csv/tsv/txt, npy, npz, h5ad; numeric features only: a dataset with non-numeric feature columns is refused with an error naming them, a known limitation to state in the report, not something to work around by encoding or dropping them yourself). Where the data lives is declared in an optional `## Loading` section of that dataset's `DATA_DESCRIPTION.md`, as `key: value` lines: `file`, `label_column`, `id_column`, `delimiter`, `x_key`, `y_key`. With one data file in the folder no `file:` is needed; a label column is used only if declared, never guessed. If a data file is missing but a `url:` is declared, that's a setup step (`python scripts/fetch_data.py --dataset <name>`) a person runs once, never something to do mid-analysis (rule 5). If loading fails, the error says what to add; report it rather than working around it.
 
 ## Approved methods
 
@@ -65,7 +66,7 @@ PCA (always include as a baseline), at least one PCA variant (e.g. Kernel PCA or
    ```
    This runs `reduce_dim.py` -> `evaluate.py` -> `visualize.py` for every method in the plan (whatever short list `method-selection` put there, this script never adds to it), applies the Fallback rules below per method, and writes `outputs/<dataset>/run_log.json` recording what succeeded, what fell back, what was skipped, and what was reused from a prior matching artifact (rule 13). It skips any method whose artifacts already match the plan rather than recomputing them, and prints a short progress line per method as it goes (e.g. `[2/3] Running UMAP...`) so anyone watching, or reading the transcript back later, can tell where it is. **If you need to redo just one method** (e.g. after changing a hyperparameter for it alone), call `reduce_dim.py`/`evaluate.py`/`visualize.py` directly for that method instead of rerunning the whole plan. Never write ad hoc reduction or plotting code inline; every numeric or visual artifact comes from these scripts.
 7. **Critique, if built.** If `.claude/agents/dr-critic.md` exists, dispatch it with only `plan.json`, `metrics/*.json`, and figure paths, never your own reasoning transcript. A returned `critique.json` gets addressed with exactly one plan revision, then repeat steps 5 to 7 for whatever changed. If the critic doesn't exist yet or produces nothing, go straight to step 8.
-8. **Report.** Run `python scripts/doctor.py --check report` first; if the report-rendering dependency is missing, stop here and document exactly what's missing in your response rather than failing silently. Otherwise, read `.claude/skills/reporting/SKILL.md`, then `python scripts/report.py --dataset <dataset> --report-number <N>`.
+8. **Report.** Run `python scripts/doctor.py --check report` first; if the report-rendering dependency is missing, stop here and document exactly what's missing in your response rather than failing silently. Otherwise, read `.claude/skills/reporting/SKILL.md`, write `outputs/<dataset>/findings.md` as it describes (the report's written interpretation, using only numbers from `metrics/*.json`), then run `python scripts/report.py --dataset <dataset> --report-number <N>` and check the rendered PDF.
 9. **Final self-check.** Work through the checklist near the end of this file.
 
 ---
@@ -112,7 +113,7 @@ Run any script with `--help` for its current, authoritative flags; this is the t
 
 - Exist at exactly that path; no `.md` copy, no duplicate at the repo root.
 - Have every figure embedded inline in the PDF, not linked externally.
-- Include: the dataset profile and why the chosen preprocessing fits it; every method run, its hyperparameters, and why it was chosen; a quantitative metrics table; all visualizations; the critique-and-revision log if a critique happened; explicitly stated limitations.
+- Include: the dataset profile and why the chosen preprocessing fits it; every method run, its hyperparameters, and why it was chosen; a quantitative metrics table with a definition of every metric shown; all visualizations (with a scree plot for PCA-family methods); a written findings section; the critique-and-revision log if a critique happened; explicitly stated limitations.
 - Trace every quoted number back to a real value in `outputs/<dataset>/metrics/*.json`.
 
 ---
@@ -121,7 +122,7 @@ Run any script with `--help` for its current, authoritative flags; this is the t
 
 - `.claude/skills/data-profiling/SKILL.md`: how to turn a profile into a preprocessing recommendation.
 - `.claude/skills/method-selection/SKILL.md`: how to choose methods and hyperparameters, and the full `plan.json` schema.
-- `.claude/skills/reporting/SKILL.md`: report structure, tone, and content requirements. Which metric applies to which method is decided inside `evaluate.py` itself, not a skill; qualitative caution about over-reading an embedding's geometry is in the Guard rails above.
+- `.claude/skills/reporting/SKILL.md`: what `report.py` generates on its own versus the `findings.md` you write, rules for that write-up, and how to verify the rendered PDF. Which metric applies to which method is decided inside `evaluate.py` itself, not a skill; qualitative caution about over-reading an embedding's geometry is in the Guard rails above.
 - `.claude/agents/dr-critic.md` (deferred): the adversarial critique subagent's contract and return format.
 
 ---

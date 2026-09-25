@@ -4,7 +4,12 @@
 Peripheral blood mononuclear cells (PBMCs) from a healthy donor, profiled with 10x
 Genomics single-cell RNA sequencing (scRNA-seq). This is the standard "pbmc3k"
 dataset used throughout the Scanpy tutorials and widely used as a benchmark for
-single-cell analysis methods. Loaded via `scanpy.datasets.pbmc3k()`.
+single-cell analysis methods. Stored as the raw h5ad file from the Scanpy tutorials.
+
+## Loading
+file: pbmc3k_raw.h5ad
+url: https://exampledata.scverse.org/scanpy/pbmc3k_raw.h5ad
+md5: e15ea74a89b3bf86022dd0b2eb3d0021
 
 ## Structure
 - 2,700 cells (samples) x 32,738 genes (features).

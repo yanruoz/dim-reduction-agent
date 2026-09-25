@@ -7,7 +7,7 @@
     "random_state": 0
   },
   "seed": 0,
-  "runtime_seconds": 10.872,
+  "runtime_seconds": 10.659,
   "embedding_shape": [
     2700,
     2

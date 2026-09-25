@@ -6,7 +6,14 @@ study of colorectal cancer: 28x28 RGB image patches extracted from hematoxylin
 and eosin (H&E) stained histology slides, downsampled from an original
 resolution of 224x224. Source: NCT-CRC-HE-100K (train/validation split) and
 CRC-VAL-HE-7K (test split, from a different clinical center; not loaded by this
-project). Loaded via `medmnist.PathMNIST(split="train")`.
+project). Only the train split is used.
+
+## Loading
+file: pathmnist.npz
+x_key: train_images
+y_key: train_labels
+url: https://zenodo.org/records/10519652/files/pathmnist.npz?download=1
+md5: a8b06965200029087d5bd730944a56c1
 
 ## Structure
 - 89,996 images (the "train" split only; the full MedMNIST collection also has
