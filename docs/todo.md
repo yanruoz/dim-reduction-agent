@@ -12,12 +12,12 @@ Deadline: Mon 9/28, 11:59pm EST. Design details live in `docs/design.md`; this i
 - Gene scaling tested on pbmc (scratch experiment, not a pipeline feature): `standardize` after `select_top_variance` (formerly `select_hvg`) left coarse structure alone (k-means ARI 0.96 at k=4, 0.82 at k=8) but changed fine neighborhoods a lot (15-NN Jaccard 0.17) and flattened the variance spectrum (50 PCs: 16.4% vs 28.9%). No labels to judge which is better, so the default stays unscaled and the data-profiling skill records the evidence.
 - `select_hvg` renamed to `select_top_variance` (param `n_top_features`), since it ranks by variance only. A dispersion-based selector was not added: the scaling test gave no evidence it is needed.
 - Label silhouette in `evaluate.py` is subsampled above 5,000 samples like trustworthiness (fields `label_silhouette_subsampled`, `label_silhouette_n_samples_used`; the report's Limitations discloses it). Existing pathmnist metrics predate this and were scored on all samples; `run_plan.py` reuses them, so delete `outputs/pathmnist/metrics/` to recompute.
+- `README.md` written (architecture, decision-making, setup, running, outputs, limitations). Needs a consistency pass after the live runs.
 - 158 unit tests. Run with the project venv: `venv/bin/python -m unittest discover -s tests` (the anaconda `python` has no anndata, so 5 tests fail there).
 
 ## Next, in order
-1. `README.md` (architecture, decision-making, how to run it).
-2. First real single-prompt runs (pbmc, then pathmnist), unattended.
-3. Manual 4-page `report.pdf`.
+1. First real single-prompt runs (pbmc, then pathmnist), unattended.
+2. Manual 4-page `report.pdf`.
 
 ## Lower priority / deliberate limitations (state these in the report)
 - **Imputation limits**: single-value imputation only (median/mean/constant); no model-based or multiple imputation, and no test of whether values are missing at random.
