@@ -45,6 +45,8 @@ State lives in JSON files, so every step can be rerun or resumed alone. `run_pla
 - **Size guards.** MDS, Isomap, Kernel PCA and Diffusion Maps are O(N²); above about 5,000 samples the plan must subsample or choose another method. Trustworthiness and the label silhouette are subsampled above 5,000 samples and the report says so.
 - **Failure handling.** A method that fails is retried once (larger `n_neighbors` for disconnected graphs), then skipped with PCA reported for that slot. One failure never stops the run. A missing PDF dependency stops only the report step.
 
+
+
 ### Methods available
 
 PCA, Kernel PCA, Sparse PCA, MDS, Isomap, LLE, Laplacian Eigenmaps, Diffusion Maps (own numpy/scipy implementation), t-SNE, UMAP. GPLVM is not implemented (a stub raises `NotImplementedError`). The agent picks a justified subset per dataset instead of running everything.
@@ -77,13 +79,15 @@ Versions are pinned because t-SNE and UMAP layouts are somewhat version-sensitiv
 
 Each dataset lives in `data/<name>/` with a `DATA_DESCRIPTION.md`, which is the one source of truth for what the data is. Data files themselves are git-ignored. An optional `## Loading` section of `key: value` lines tells the loader where things are:
 
-| key | meaning |
-|---|---|
-| `file` | data file name (not needed if the folder has exactly one) |
+
+| key                         | meaning                                                           |
+| --------------------------- | ----------------------------------------------------------------- |
+| `file`                      | data file name (not needed if the folder has exactly one)         |
 | `label_column`, `id_column` | table columns to treat as labels / ids (labels are never guessed) |
-| `delimiter` | for csv/tsv/txt; sniffed if omitted |
-| `x_key`, `y_key` | array names inside an `.npz` |
-| `url`, `md5` | where to download the file, and its checksum |
+| `delimiter`                 | for csv/tsv/txt; sniffed if omitted                               |
+| `x_key`, `y_key`            | array names inside an `.npz`                                      |
+| `url`, `md5`                | where to download the file, and its checksum                      |
+
 
 Supported files: csv, tsv, txt, npy, npz, h5ad. Every dataset, including the two below, goes through the same loader.
 
@@ -96,6 +100,8 @@ venv/bin/python scripts/fetch_data.py --dataset pathmnist
 
 - `pbmc`: Scanpy's raw PBMC 3k single-cell counts (2,700 cells, 32,738 genes, no labels).
 - `pathmnist`: MedMNIST PathMNIST training images (89,996 flattened 28×28×3 images, 9 tissue classes).
+
+
 
 ## Running the agent
 
@@ -160,6 +166,8 @@ tests/                       unit tests
 docs/design.md, todo.md      design notes and running status
 ```
 
+
+
 ## Limitations
 
 - **Numeric features only.** A dataset with non-numeric feature columns is refused with an error naming them. There is no categorical encoding.
@@ -169,3 +177,4 @@ docs/design.md, todo.md      design notes and running status
 - **Manifold layouts are pictures.** t-SNE and UMAP cluster sizes, shapes and distances are not findings. UMAP is deterministic here (fixed seed, single thread) but still sensitive to small numeric changes in its input.
 - **GPLVM** is not implemented, and the adversarial critic subagent is not built.
 - **Data-derived clusters** are k-means on PCA with k chosen by silhouette, which tends to favor coarse splits. They only color plots.
+
