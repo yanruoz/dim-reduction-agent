@@ -79,8 +79,8 @@ class TestMissingDataRequiresHandling(unittest.TestCase):
 
 class TestOrdering(unittest.TestCase):
     def test_a_step_before_impute_is_an_error_and_is_named(self):
-        for early in ("standardize", "log1p", "normalize_total", "select_hvg", "scale_unit_range"):
-            args = {"n_top_genes": 5} if early == "select_hvg" else {}
+        for early in ("standardize", "log1p", "normalize_total", "select_top_variance", "scale_unit_range"):
+            args = {"n_top_features": 5} if early == "select_top_variance" else {}
             errors, _ = check(make_plan(pre(early, **args), pre("impute")), with_missing())
             self.assertTrue(has(errors, f"'impute' must come before ['{early}']"), early)
 

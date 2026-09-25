@@ -15,7 +15,7 @@ Exactly seven, implemented in `scripts/reduce_dim.py`'s `PREPROCESSORS` registry
 |---|---|---|
 | `normalize_total` | Rescales each sample's row to a common total, removing per-sample "depth" differences | optional `target_sum` |
 | `log1p` | `log(1+x)`, compresses a heavy right-skewed tail | none |
-| `select_hvg` | Keeps the `n_top_genes` columns with the highest variance (generic top-variance feature selection; the name is descriptive, not gene-specific) | `n_top_genes` |
+| `select_top_variance` | Keeps the `n_top_features` columns with the highest variance (ranks features by raw variance, not by mean-adjusted dispersion) | `n_top_features` |
 | `standardize` | Zero mean, unit variance per feature | none |
 | `scale_unit_range` | Rescales to `[0, 1]` | optional `min`, `max` |
 | `drop_missing_features` | Removes features whose missing fraction exceeds `max_fraction`; always removes entirely-missing features | optional `max_fraction` (default 0.5, must be in [0, 1)) |
@@ -35,9 +35,10 @@ Work through these in order, starting with step 0 (missing values); more than on
 1. **Count-like data?** Non-negative, integer-valued, high sparsity in `profile.json`, and/or `DATA_DESCRIPTION.md` says the values are counts, reads, or UMIs. The description is the authority here; the loader supplies no modality hint, since every dataset is loaded the same way.
    - If yes: `normalize_total` then `log1p`, in that order. Cite the actual sparsity percentage and/or value range from `profile.json` in the reason (e.g. "97.4% sparse raw UMI counts per profile.json; normalizing removes per-cell sequencing-depth differences before log-compressing the heavy tail").
    - If `DATA_DESCRIPTION.md` says normalization was already applied upstream, skip this and say so; never double-normalize.
+   - Do not add `standardize` after `normalize_total` + `log1p` + `select_top_variance` by default. It was tested on one 2,700-cell, 32,738-gene scRNA-seq set with no labels (2,000 top-variance genes, 50-PC PCA): coarse structure was nearly unchanged (k-means ARI 0.96 at k=4, 0.82 at k=8), but fine neighborhoods overlapped only 17% (mean Jaccard of 15-nearest-neighbor sets), and the 50 PCs captured 16.4% of variance instead of 28.9%, because every gene, including low-expression noisy ones, got equal weight. Without labels there is no way to call that better. One dataset is evidence, not a rule: if you add `standardize` here, say in the `reason` that it is a judgment call and name that alternative.
 
 2. **Is `n_features` large relative to `n_samples`?** Rough guide: `n_features` exceeds `n_samples`, or is in the thousands.
-   - If yes: add `select_hvg` after any count-normalization above, with `n_top_genes` around `min(2000, n_features)`. Cite the actual `n_samples`/`n_features` numbers in the reason.
+   - If yes: add `select_top_variance` after any count-normalization above, with `n_top_features` around `min(2000, n_features)`. Cite the actual `n_samples`/`n_features` numbers in the reason.
    - If `n_features <= n_samples` (a modest, already-manageable feature count), skip this step; cutting features when dimensionality isn't actually a problem just discards information for no reason.
 
 3. **Dense, naturally bounded-range data?** E.g. pixel intensities 0-255, or `DATA_DESCRIPTION.md` states a fixed value range. Not the same case as step 1.

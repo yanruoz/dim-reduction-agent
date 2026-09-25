@@ -12,7 +12,7 @@ ALLOWED_METHODS = {
 KNOWN_PREPROCESSING_STEPS = {
     "normalize_total",
     "log1p",
-    "select_hvg",
+    "select_top_variance",
     "standardize",
     "scale_unit_range",
     "impute",
@@ -20,7 +20,7 @@ KNOWN_PREPROCESSING_STEPS = {
 }
 
 # Steps that have to run before anything else because every other step either
-# propagates NaN or (select_hvg's variance ranking) silently misbehaves on it.
+# propagates NaN or (select_top_variance's variance ranking) silently misbehaves on it.
 MISSING_VALUE_STEPS = ("drop_missing_features", "impute")
 IMPUTE_STRATEGIES = {"median", "mean", "constant"}
 

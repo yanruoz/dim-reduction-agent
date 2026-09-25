@@ -28,10 +28,10 @@ def _log1p(X, params):
     return np.log1p(X)
 
 
-def _select_hvg(X, params):
-    """Keep the n_top_genes columns with the highest variance. Generic top-variance
-    feature selection; the scRNA-seq name is descriptive, not dataset-specific."""
-    n_top = min(params.get("n_top_genes", 2000), X.shape[1])
+def _select_top_variance(X, params):
+    """Keep the n_top_features columns with the highest variance (generic top-variance
+    feature selection: it ranks by raw variance, not by mean-adjusted dispersion)."""
+    n_top = min(params.get("n_top_features", 2000), X.shape[1])
     variances = X.var(axis=0)
     top_idx = np.sort(np.argsort(variances)[::-1][:n_top])  # keep original column order
     return X[:, top_idx]
@@ -93,7 +93,7 @@ def _impute(X, params):
 PREPROCESSORS = {
     "normalize_total": _normalize_total,
     "log1p": _log1p,
-    "select_hvg": _select_hvg,
+    "select_top_variance": _select_top_variance,
     "standardize": _standardize,
     "scale_unit_range": _scale_unit_range,
     "impute": _impute,

@@ -3,7 +3,7 @@
   "preprocessing": [
     {
       "step": "scale_unit_range",
-      "reason": "Raw pixel intensities are 0-255 (profile.json value_range) and DATA_DESCRIPTION.md confirms these are bounded RGB values, not counts; rescaling to [0,1] keeps no single pixel channel dominating a distance computation purely from its raw scale. Not count-like data, so normalize_total/log1p don't apply, and n_features (2,352) is well under n_samples (89,996) so select_hvg isn't needed either."
+      "reason": "Raw pixel intensities are 0-255 (profile.json value_range) and DATA_DESCRIPTION.md confirms these are bounded RGB values, not counts; rescaling to [0,1] keeps no single pixel channel dominating a distance computation purely from its raw scale. Not count-like data, so normalize_total/log1p don't apply, and n_features (2,352) is well under n_samples (89,996) so select_top_variance isn't needed either."
     }
   ],
   "methods": [

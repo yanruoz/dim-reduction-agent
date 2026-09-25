@@ -60,7 +60,7 @@ def _check_missing_value_handling(plan, profile, errors, warnings):
             errors.append(f"preprocessing 'drop_missing_features': max_fraction must be a number in [0, 1), got {max_fraction!r}")
 
     # Order: whatever handles missing values must come before every other step (they
-    # either propagate NaN or, like select_hvg's variance ranking, misbehave on it),
+    # either propagate NaN or, like select_top_variance's variance ranking, misbehave on it),
     # and dropping mostly-missing features must precede imputing what's left.
     if "impute" in steps:
         i = steps.index("impute")

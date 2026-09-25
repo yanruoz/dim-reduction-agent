@@ -10,9 +10,9 @@
       "reason": "Raw counts are heavily right-skewed; DATA_DESCRIPTION.md notes a small number of highly-expressed genes can dominate raw totals. Log transform compresses this skew so distance-based methods (PCA, UMAP) aren't dominated by a handful of extreme values."
     },
     {
-      "step": "select_hvg",
+      "step": "select_top_variance",
       "params": {
-        "n_top_genes": 2000
+        "n_top_features": 2000
       },
       "reason": "32,738 genes is far more than 2,700 cells, and 97.4% of entries are zero (profile.json), so most genes carry little signal. Selecting the top 2,000 highly variable genes keeps the informative signal and keeps distance computations from being dominated by noise genes."
     }
