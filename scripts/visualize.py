@@ -20,18 +20,40 @@ from plan_schema import METHOD_ROLES
 # mid-step, used at low alpha so overlapping points read as denser regions.
 DENSITY_COLOR = "#256abf"
 
-# Labeled case: the dataviz skill's categorical palette is only validated for
-# 3 categories in an all-pairs context like a scatter (past that it
-# recommends faceting or folding into "Other"). PathMNIST has 9 real classes
-# we want to show individually; faceting loses the single-embedding overview
-# and folding 6 of 9 into "Other" throws away real signal. Given the actual
-# grading criterion is visualization quality/clarity, not CVD certification,
-# matplotlib's tab10 (an established categorical colormap for ~10 categories)
-# is the pragmatic choice here, a deliberate tradeoff, not an oversight.
-CATEGORICAL_CMAP = "tab10"
+# Categorical case: the dataviz skill's palette is only validated for 3 categories in a scatter (past that
+# it recommends faceting or folding into "Other"). We need a single-embedding overview of up to ~20 classes,
+# so we use matplotlib's tab10/tab20 (established categorical colormaps), and fold everything past the 19
+# largest classes into one gray "other" (see categorical_colors). A deliberate tradeoff, not an oversight.
+OTHER_COLOR = "#b0b0b0"
+MAX_LEGEND_CLASSES = 20  # tab20's size; beyond this the smallest classes are folded into one gray "other"
 
 
-def make_scatter(embedding, y, dataset, method, title=None):
+def categorical_colors(y, label_fn=str):
+    """Per-point colors (n, 4) and legend entries [(text, color)] for a categorical vector.
+    Up to 10 classes use tab10, up to 20 use tab20; beyond that the 19 largest classes keep a color
+    and every smaller one is folded into a single gray "other" so no two classes share a color."""
+    classes, counts = np.unique(y, return_counts=True)
+    n_classes = len(classes)
+    if n_classes <= 10:
+        cmap, keep = plt.get_cmap("tab10"), list(classes)
+    elif n_classes <= MAX_LEGEND_CLASSES:
+        cmap, keep = plt.get_cmap("tab20"), list(classes)
+    else:
+        cmap = plt.get_cmap("tab20")
+        biggest = np.argsort(-counts, kind="stable")[: MAX_LEGEND_CLASSES - 1]
+        keep = sorted(classes[biggest].tolist())
+    color_of = {c: cmap(i) for i, c in enumerate(keep)}
+    n_other = n_classes - len(keep)
+    colors = np.array([color_of.get(c, matplotlib.colors.to_rgba(OTHER_COLOR)) for c in y])  # (n, 4)
+    legend = [(label_fn(c), color_of[c]) for c in keep]
+    if n_other:
+        legend.append((f"other ({n_other} classes)", matplotlib.colors.to_rgba(OTHER_COLOR)))
+    return colors, legend
+
+
+def make_scatter(embedding, y, dataset, method, title=None, color_note=None, label_fn=str):
+    """`y` is any categorical per-point vector (true labels or data-derived cluster ids) or None for
+    density coloring; `color_note` is appended to the subtitle so the reader knows what the colors mean."""
     x, y_coord = embedding[:, 0], embedding[:, 1]
     n = embedding.shape[0]
 
@@ -42,10 +64,7 @@ def make_scatter(embedding, y, dataset, method, title=None):
     point_size = float(np.clip(6.0 * (5000.0 / max(n, 1)) ** 0.5, 1.0, 6.0))
 
     if y is not None:
-        classes = np.unique(y)
-        cmap = plt.get_cmap(CATEGORICAL_CMAP)
-        class_index = {cls: i for i, cls in enumerate(classes)}
-        colors = np.array([cmap(class_index[c] % 10) for c in y])
+        colors, legend = categorical_colors(y, label_fn)
         # Random draw order: plotting class-by-class would let whichever
         # class is drawn last systematically cover the others.
         order = np.random.default_rng(0).permutation(n)
@@ -54,10 +73,7 @@ def make_scatter(embedding, y, dataset, method, title=None):
             s=point_size, alpha=0.6 if n <= 5000 else 0.4, linewidths=0,
             color=colors[order],
         )
-        handles = [
-            plt.Line2D([], [], marker="o", linestyle="", markersize=6, color=cmap(class_index[c] % 10), label=str(c))
-            for c in classes
-        ]
+        handles = [plt.Line2D([], [], marker="o", linestyle="", markersize=6, color=c, label=t) for t, c in legend]
         ax.legend(handles=handles, fontsize=8, loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
     else:
         # No ground truth to color by: alpha-blended monochrome scatter, so
@@ -85,6 +101,8 @@ def make_scatter(embedding, y, dataset, method, title=None):
             ax.spines[spine].set_visible(False)
 
     subtitle = f"n={n:,}"
+    if color_note:
+        subtitle += f", {color_note}"
     if embedding.shape[1] > 2:
         subtitle += f", showing dims 1-2 of {embedding.shape[1]}"
     # Title left-aligned with the subtitle on its own line beneath it, so a
@@ -94,6 +112,23 @@ def make_scatter(embedding, y, dataset, method, title=None):
 
     fig.tight_layout()
     return fig
+
+
+def load_cluster_coloring(dataset, n):
+    """Data-derived cluster ids to color an unlabeled dataset's plots, or (None, None) if the plan has no
+    clustering block or the saved clusters don't match this embedding. Returns (labels (n,), note)."""
+    out = Path("outputs") / dataset
+    labels_path, metrics_path, plan_path = out / "clusters.npy", out / "metrics" / "clustering.json", out / "plan.json"
+    if not (labels_path.exists() and metrics_path.exists() and plan_path.exists()):
+        return None, None
+    if "clustering" not in json.loads(plan_path.read_text()):
+        return None, None  # a leftover file from an earlier plan revision must not color this plan's figures
+    labels = np.load(labels_path)
+    if labels.shape != (n,):
+        return None, None
+    info = json.loads(metrics_path.read_text())
+    note = f"colored by data-derived clusters (k-means on {info['params']['source']}, k={info['k']})"
+    return labels, note
 
 
 def make_scree(evr, n_used, dataset, method):
@@ -153,7 +188,16 @@ if __name__ == "__main__":
 
     _, y, metadata = load_dataset(args.dataset)  # labels for coloring only, per CLAUDE.md
 
-    fig = make_scatter(embedding, y, args.dataset, args.method, title=args.title)
+    # Labels win when present; otherwise data-derived clusters (if the plan asked for them); otherwise density
+    color_note, label_fn = None, str
+    if y is not None:
+        color_note = "colored by ground-truth labels"
+    else:
+        y, color_note = load_cluster_coloring(args.dataset, embedding.shape[0])
+        if y is not None:
+            label_fn = lambda c: f"cluster {int(c) + 1}"  # noqa: E731
+
+    fig = make_scatter(embedding, y, args.dataset, args.method, title=args.title, color_note=color_note, label_fn=label_fn)
 
     out_path = Path(args.out) if args.out else Path("outputs") / args.dataset / "figures" / f"{args.method}.png"
     out_path.parent.mkdir(parents=True, exist_ok=True)
