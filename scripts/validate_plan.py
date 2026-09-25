@@ -7,7 +7,14 @@ import json
 import sys
 from pathlib import Path
 
-from plan_schema import ALLOWED_METHODS, ALLOWED_ROLES, KNOWN_PREPROCESSING_STEPS, METHOD_ROLES
+from plan_schema import (
+    ALLOWED_METHODS,
+    ALLOWED_ROLES,
+    IMPUTE_STRATEGIES,
+    KNOWN_PREPROCESSING_STEPS,
+    METHOD_ROLES,
+    MISSING_VALUE_STEPS,
+)
 
 # CLAUDE.md rule 12: "standard choice"/"default" alone is not an acceptable reason.
 LAZY_REASONS = {"", "standard choice", "default", "standard", "n/a", "na"}
@@ -21,6 +28,76 @@ LARGE_N_THRESHOLD = 5000
 
 def _is_lazy_reason(reason):
     return not isinstance(reason, str) or reason.strip().lower() in LAZY_REASONS
+
+
+# Above this share of missing cells, imputed values make up a large part of what every
+# method sees; not an error, but the plan's reasons should say why proceeding is sound.
+HIGH_MISSING_FRACTION = 0.2
+
+
+def _is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _check_missing_value_handling(plan, profile, errors, warnings):
+    """Mechanical guard: data with missing values can't reach a method unhandled,
+    and the steps that handle them must run first and in the right order."""
+    steps = [p.get("step") for p in plan.get("preprocessing", []) if isinstance(p, dict)]
+    by_name = {p.get("step"): p for p in plan.get("preprocessing", []) if isinstance(p, dict)}
+
+    # Parameter sanity for the two steps, independent of the data.
+    if "impute" in by_name:
+        params = by_name["impute"].get("params") or {}
+        strategy = params.get("strategy", "median")
+        if strategy not in IMPUTE_STRATEGIES:
+            errors.append(f"preprocessing 'impute': strategy must be one of {sorted(IMPUTE_STRATEGIES)}, got {strategy!r}")
+        if "fill_value" in params and not _is_number(params["fill_value"]):
+            errors.append("preprocessing 'impute': fill_value must be a number")
+    if "drop_missing_features" in by_name:
+        max_fraction = (by_name["drop_missing_features"].get("params") or {}).get("max_fraction", 0.5)
+        if not _is_number(max_fraction) or not (0 <= max_fraction < 1):
+            errors.append(f"preprocessing 'drop_missing_features': max_fraction must be a number in [0, 1), got {max_fraction!r}")
+
+    # Order: whatever handles missing values must come before every other step (they
+    # either propagate NaN or, like select_hvg's variance ranking, misbehave on it),
+    # and dropping mostly-missing features must precede imputing what's left.
+    if "impute" in steps:
+        i = steps.index("impute")
+        offenders = [s for s in steps[:i] if s not in MISSING_VALUE_STEPS]
+        if offenders:
+            errors.append(f"'impute' must come before {offenders}: those steps cannot run on missing values")
+        if "drop_missing_features" in steps and steps.index("drop_missing_features") > i:
+            errors.append("'drop_missing_features' must come before 'impute' (impute refuses entirely-missing features)")
+    if "drop_missing_features" in steps:
+        i = steps.index("drop_missing_features")
+        offenders = [s for s in steps[:i] if s not in MISSING_VALUE_STEPS]
+        if offenders:
+            errors.append(f"'drop_missing_features' must come before {offenders}")
+
+    if profile is None:
+        warnings.append("No profile.json next to the plan, so the missing-value guard could not check it against the data "
+                        "(preprocessing still refuses NaN at run time).")
+        return
+
+    if profile.get("has_missing"):
+        if "impute" not in steps:
+            errors.append(
+                f"profile.json shows {profile.get('n_missing_cells', 'some')} missing cell(s) "
+                f"({profile.get('missing_fraction', 0) * 100:.2f}% of the data) but the plan has no 'impute' step; "
+                "no method can run on missing values."
+            )
+        if profile.get("n_features_all_missing", 0) > 0 and "drop_missing_features" not in steps:
+            errors.append(
+                f"profile.json shows {profile['n_features_all_missing']} entirely missing feature(s), which "
+                "'impute' cannot fill; add 'drop_missing_features' before 'impute'."
+            )
+        if profile.get("missing_fraction", 0) > HIGH_MISSING_FRACTION:
+            warnings.append(
+                f"{profile['missing_fraction'] * 100:.1f}% of cells are missing; imputed values will make up a large "
+                "share of what every method sees. The plan's reasons should say why proceeding is still sound."
+            )
+    elif "impute" in steps:
+        warnings.append("profile.json shows no missing values, so the 'impute' step is unnecessary.")
 
 
 def validate_plan(plan, profile=None):
@@ -127,6 +204,9 @@ def validate_plan(plan, profile=None):
 
     if not isinstance(plan["evaluation"], dict):
         errors.append("'evaluation' must be a dict")
+
+    if isinstance(plan["preprocessing"], list):
+        _check_missing_value_handling(plan, profile, errors, warnings)
 
     return errors, warnings
 

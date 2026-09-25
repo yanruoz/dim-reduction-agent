@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 from loaders import load_dataset
-from plan_schema import KNOWN_PREPROCESSING_STEPS
+from plan_schema import IMPUTE_STRATEGIES, KNOWN_PREPROCESSING_STEPS
 
 # ── Preprocessing steps: generic, work on any (n_samples, n_features) array ──
 
@@ -51,12 +51,53 @@ def _scale_unit_range(X, params):
     return (X - lo) / span
 
 
+def _drop_missing_features(X, params):
+    """Drop features whose share of missing values is above max_fraction, and
+    always drop entirely-missing ones (nothing to impute them from)."""
+    max_fraction = params.get("max_fraction", 0.5)
+    fraction = np.isnan(X).mean(axis=0)  # (n_features,)
+    keep = (fraction <= max_fraction) & (fraction < 1.0)
+    if not keep.any():
+        raise ValueError(
+            f"drop_missing_features(max_fraction={max_fraction}) would remove every feature; "
+            "the data is too incomplete to analyze as it stands."
+        )
+    return X[:, keep]
+
+
+def _impute(X, params):
+    """Fill missing values per feature (column) with its median, mean, or a
+    constant. Refuses features that are entirely missing rather than inventing
+    values for them; drop those first with drop_missing_features."""
+    strategy = params.get("strategy", "median")
+    if strategy not in IMPUTE_STRATEGIES:
+        raise ValueError(f"impute strategy must be one of {sorted(IMPUTE_STRATEGIES)}, got {strategy!r}")
+    missing = np.isnan(X)  # (n_samples, n_features)
+    if not missing.any():
+        return X
+    all_missing = missing.all(axis=0)
+    if all_missing.any():
+        raise ValueError(
+            f"{int(all_missing.sum())} feature(s) are entirely missing and cannot be imputed; "
+            "drop them first with drop_missing_features."
+        )
+    if strategy == "median":
+        fill = np.nanmedian(X, axis=0)
+    elif strategy == "mean":
+        fill = np.nanmean(X, axis=0)
+    else:
+        fill = np.full(X.shape[1], float(params.get("fill_value", 0.0)))
+    return np.where(missing, fill[None, :], X)
+
+
 PREPROCESSORS = {
     "normalize_total": _normalize_total,
     "log1p": _log1p,
     "select_hvg": _select_hvg,
     "standardize": _standardize,
     "scale_unit_range": _scale_unit_range,
+    "impute": _impute,
+    "drop_missing_features": _drop_missing_features,
 }
 assert set(PREPROCESSORS) == KNOWN_PREPROCESSING_STEPS, "PREPROCESSORS must match plan_schema's known steps"
 
@@ -67,6 +108,16 @@ def apply_preprocessing(X, preprocessing_steps):
         if name not in PREPROCESSORS:
             raise ValueError(f"Unknown preprocessing step '{name}'; not in {sorted(PREPROCESSORS)}")
         X = PREPROCESSORS[name](X, step.get("params") or {})
+    # Backstop, independent of validate_plan.py: no method here can run on NaN/inf, and a
+    # plan that reached this point without handling them would otherwise fail deep inside
+    # sklearn with an unhelpful message, or worse, produce a quietly meaningless embedding.
+    if not np.isfinite(X).all():
+        n_bad = int((~np.isfinite(X)).sum())
+        raise ValueError(
+            f"{n_bad:,} non-finite value(s) (NaN/inf) remain after preprocessing. "
+            "If the data has missing values, the plan needs drop_missing_features and/or impute "
+            "before any other step; otherwise check the step order and inputs."
+        )
     return X
 
 

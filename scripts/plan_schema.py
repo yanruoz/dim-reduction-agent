@@ -15,7 +15,14 @@ KNOWN_PREPROCESSING_STEPS = {
     "select_hvg",
     "standardize",
     "scale_unit_range",
+    "impute",
+    "drop_missing_features",
 }
+
+# Steps that have to run before anything else because every other step either
+# propagates NaN or (select_hvg's variance ranking) silently misbehaves on it.
+MISSING_VALUE_STEPS = ("drop_missing_features", "impute")
+IMPUTE_STRATEGIES = {"median", "mean", "constant"}
 
 # Every plan.json method entry must declare a "role" matching its method's
 # fixed category here (validate_plan.py checks this). Not a strict binary:
