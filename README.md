@@ -44,6 +44,7 @@ State lives in JSON files, so every step can be rerun or resumed alone. `run_pla
 - **Every decision is logged.** Each preprocessing step and method carries a `reason` that must cite something about this dataset; "standard choice" is rejected by the validator. Judgment calls must say so and name the alternatives.
 - **Size guards.** MDS, Isomap, Kernel PCA and Diffusion Maps are O(N²); above about 5,000 samples the plan must subsample or choose another method. Trustworthiness and the label silhouette are subsampled above 5,000 samples and the report says so.
 - **Failure handling.** A method that fails is retried once (larger `n_neighbors` for disconnected graphs), then skipped with PCA reported for that slot. One failure never stops the run. A missing PDF dependency stops only the report step.
+- **Environment isolation.** Every command the agent runs goes through this project's own `venv/` (created once if missing), never a bare system or base conda Python — a real incident once installed the pinned requirements into someone's conda base environment instead, breaking unrelated tools there and crashing an unrelated import. `doctor.py` also runs each package import in its own subprocess and reports whether it's in an isolated venv, so a crashing import is caught and named rather than taking the whole check down.
 
 
 
@@ -98,7 +99,7 @@ venv/bin/python scripts/fetch_data.py --dataset pbmc
 venv/bin/python scripts/fetch_data.py --dataset pathmnist
 ```
 
-Doing this ahead of time is optional, not required: the agent's own step 1 already runs `doctor.py`, and if it reports a missing data file with a `url:` declared, the agent fetches it itself the same way, once, before continuing. The same is true for a missing Python package (`pip install -r requirements.txt`, the pinned versions only, never an unpinned install). Either way, if that one attempt doesn't resolve it, the agent stops and reports exactly what's missing rather than guessing further.
+Doing this ahead of time is optional, not required: the agent's own step 1 already runs `doctor.py`, and if it reports a missing data file with a `url:` declared, the agent fetches it itself the same way, once, before continuing. The same is true for a missing Python package (`venv/bin/pip install -r requirements.txt`, the pinned versions only, never an unpinned install, and always into this project's own `venv/`, never a system or base conda Python). Either way, if that one attempt doesn't resolve it, the agent stops and reports exactly what's missing rather than guessing further.
 
 - `pbmc`: Scanpy's raw PBMC 3k single-cell counts (2,700 cells, 32,738 genes, no labels).
 - `pathmnist`: MedMNIST PathMNIST training images (89,996 flattened 28×28×3 images, 9 tissue classes).
@@ -113,7 +114,13 @@ From this directory, start Claude Code and give it one instruction naming one da
 do the data analysis on data/pbmc
 ```
 
-An optional report number can be added ("... as report 1"); otherwise the next free number is used. It writes `outputs/<name>/plan.json` and `reports/<name>/generated_report_<N>.pdf`.
+An optional report number can be added ("... as report 1"); otherwise the next free number is used by counting existing `reports/*/generated_report_*.pdf` files across the whole repo, so leftover reports from an earlier run of *any* dataset push the number up. It writes `outputs/<name>/plan.json` and `reports/<name>/generated_report_<N>.pdf`.
+
+For a clean run whose numbering lands on 1 and 2 (e.g. to redo this repo's own required submissions from scratch), clear the existing ones first — this also makes the agent redo the full pipeline instead of reusing cached artifacts in `outputs/`:
+```bash
+rm -rf outputs/pbmc outputs/pathmnist reports/pbmc reports/pathmnist
+```
+`data/` is never touched by this; only `outputs/` and `reports/` are regenerable.
 
 ## Running the scripts by hand
 
