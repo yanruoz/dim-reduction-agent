@@ -3,48 +3,88 @@
   "preprocessing": [
     {
       "step": "normalize_total",
-      "reason": "Raw UMI counts (profile.json: mean ~2367 total counts per cell) have very different per-cell totals; DATA_DESCRIPTION.md notes no normalization has been applied yet. Library-size normalization removes sequencing-depth differences between cells before comparing expression profiles."
+      "reason": "profile.json shows 97.4% zeros and non-negative integer values in [0, 419], and DATA_DESCRIPTION.md says these are raw UMI counts with total counts varying across cells (mean ~2,367 per cell, genes detected ranging 212 to 3,422). Rescaling each cell to a common total removes this sequencing-depth difference so it does not become the dominant axis of variation. DATA_DESCRIPTION.md states no normalization was applied upstream, so this is not double-normalizing. target_sum is left at the implementation default, the median per-cell total count; the exact constant only rescales every cell equally before log1p and does not change the method choice."
     },
     {
       "step": "log1p",
-      "reason": "Raw counts are heavily right-skewed; DATA_DESCRIPTION.md notes a small number of highly-expressed genes can dominate raw totals. Log transform compresses this skew so distance-based methods (PCA, UMAP) aren't dominated by a handful of extreme values."
+      "reason": "DATA_DESCRIPTION.md warns the counts are heavy-tailed, with a few highly expressed genes dominating raw totals (max value 419 against a mean of 0.072 per profile.json). log(1+x) compresses that tail so a handful of genes do not dominate every distance-based method, while mapping the 97.4% zeros to zero."
     },
     {
       "step": "select_top_variance",
       "params": {
         "n_top_features": 2000
       },
-      "reason": "32,738 genes is far more than 2,700 cells, and 97.4% of entries are zero (profile.json), so most genes carry little signal. Selecting the top 2,000 highly variable genes keeps the informative signal and keeps distance computations from being dominated by noise genes."
+      "reason": "n_features (32,738) is about 12x n_samples (2,700), and most genes are zero in nearly every cell (97.4% sparsity), so they add noise but little signal to distances. Keeping the 2,000 highest-variance genes (after normalize + log1p) makes Kernel PCA and Diffusion Maps' N x N distance computations cheaper and less noise-driven. Judgment call: this ranks by raw variance, not by mean-adjusted dispersion as scRNA-seq tools usually do, so some high-mean genes may be favored; the alternative (keeping all genes) was rejected because it would let tens of thousands of near-empty genes dilute the distances. No standardize step follows: per data-profiling/SKILL.md, standardizing on a comparable scRNA-seq set gave every low-expression noisy gene equal weight and changed fine neighborhoods substantially, with no labels here to show that as an improvement. Known limitation: no cell or gene QC filtering is available in this pipeline, although DATA_DESCRIPTION.md says the data are unfiltered (possible low-quality cells and doublets remain)."
     }
   ],
   "methods": [
     {
       "name": "pca",
+      "role": "general_purpose",
       "hyperparameters": {
         "n_components": 50
       },
+      "reason": "Required linear baseline. n_components = min(50, floor(2700/2)=1350, 2000) = 50. With 2,700 cells and 2,000 retained genes, 50 components is enough to summarize the main expression programs while staying far below the sample count; the sidecar reports how much variance they capture and how many components 90% would need. Also the source for the clustering used to color these unlabeled plots."
+    },
+    {
+      "name": "kernel_pca",
       "role": "general_purpose",
-      "reason": "Required linear baseline. 50 components is the standard scRNA-seq choice: enough to capture most biological variance across 2,000 genes without overfitting to per-gene noise given only 2,700 cells."
+      "hyperparameters": {
+        "n_components": 50,
+        "kernel": "rbf",
+        "random_state": 0
+      },
+      "reason": "Required PCA variant. n_samples = 2,700 is under the ~5,000 threshold, so the 2,700 x 2,700 RBF kernel matrix is affordable, and Kernel PCA can capture nonlinear structure that linear PCA misses in the log-expression space. Sparse PCA was the alternative; at this sample size cost does not force it, and it targets interpretable (sparse) loadings rather than nonlinear structure. n_components = 50 matches PCA for a like-for-like comparison. Judgment call: the RBF gamma is left at sklearn's default 1/n_features (1/2000); no data-driven bandwidth is available without labels, and the diffusion-map entry below uses a median-distance bandwidth, giving a second, differently-tuned kernel view."
+    },
+    {
+      "name": "diffusion_maps",
+      "role": "general_purpose",
+      "hyperparameters": {
+        "n_components": 10,
+        "alpha": 1.0
+      },
+      "reason": "Optional second nonlinear general-purpose method, affordable at 2,700 cells (N x N matrix). DATA_DESCRIPTION.md describes PBMCs, a mix of blood cell populations where continuous differentiation-like gradients as well as discrete groups are plausible, and diffusion maps are well established for scRNA-seq for exactly that kind of structure. 10 components, not 2, since its role is a quantitative embedding; the first two are plotted. epsilon defaults to the median pairwise squared distance (judgment call: no labels to tune it against)."
     },
     {
       "name": "umap",
+      "role": "visualization_only",
       "hyperparameters": {
+        "n_components": 2,
         "n_neighbors": 15,
         "min_dist": 0.1,
-        "n_components": 2,
         "random_state": 0
       },
+      "reason": "Visualization only. n_samples = 2,700 falls in the 500 to 20,000 range where n_neighbors = 15 is the heuristic; min_dist = 0.1 is UMAP's own default. With no labels, this is the main picture for judging whether the PCA-derived clusters look like separated groups. Its embedding is never used for clustering or any other computation."
+    },
+    {
+      "name": "tsne",
       "role": "visualization_only",
-      "reason": "Standard nonlinear manifold method for scRNA-seq visualization. n_neighbors=15 and min_dist=0.1 are UMAP's own defaults; with 2,700 cells there's no strong reason yet to move off the defaults, this is a first-pass plan for pipeline testing, not a final analysis."
+      "hyperparameters": {
+        "n_components": 2,
+        "perplexity": 30,
+        "random_state": 0
+      },
+      "reason": "Added for a specific reason: the dataset has no labels, and CLAUDE.md requires a second setting before trusting any structural claim from a manifold method. Only one UMAP artifact per method name is supported, so t-SNE (a different objective on the same preprocessed data) serves as the cross-check: a group is only described as separated in the report if it appears in both UMAP and t-SNE. Perplexity 30 is well under n_samples/3 = 900. Visualization only, never used for any computation."
     }
   ],
+  "clustering": {
+    "source": "pca",
+    "algorithm": "kmeans",
+    "k_range": [
+      3,
+      10
+    ],
+    "reason": "profile.json has has_labels: false, so without clusters every figure would be a single-color density plot. k-means runs on the 50-component PCA embedding (general_purpose; UMAP/t-SNE are never a clustering source). Judgment call, revised after the first run: the default scan [2, 10] picked k=2, the range's lower bound, but the PCA, UMAP and t-SNE figures all show the larger of those two clusters splitting into a big group plus a separate compact group, so two colors hid visible structure. Alternatives: keep [2, 10] (undercolors what the figures show), or fix k at a larger value (no data-driven basis for any specific larger k without labels). Raising the lower bound to 3 keeps the choice data-driven by silhouette within the new range. Clusters are for coloring only and are not named as cell types."
+  },
   "evaluation": {
     "quantitative": [
       "trustworthiness",
-      "explained_variance_ratio"
+      "explained_variance_ratio",
+      "silhouette_for_k_selection"
     ],
     "qualitative": [
-      "seed_stability_check"
+      "seed_stability_check",
+      "umap_vs_tsne_agreement"
     ]
   },
   "seed": 0,

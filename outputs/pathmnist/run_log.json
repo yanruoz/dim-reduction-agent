@@ -4,15 +4,19 @@
   "methods": [
     {
       "name": "pca",
-      "status": "ok"
+      "status": "reused"
     },
     {
       "name": "sparse_pca",
-      "status": "ok"
+      "status": "reused"
     },
     {
       "name": "umap",
-      "status": "ok"
+      "status": "reused"
+    },
+    {
+      "name": "tsne",
+      "status": "reused"
     }
   ]
 }

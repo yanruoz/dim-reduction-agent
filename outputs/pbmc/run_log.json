@@ -4,11 +4,26 @@
   "methods": [
     {
       "name": "pca",
-      "status": "ok"
+      "status": "reused"
+    },
+    {
+      "name": "kernel_pca",
+      "status": "reused"
+    },
+    {
+      "name": "diffusion_maps",
+      "status": "reused"
     },
     {
       "name": "umap",
-      "status": "ok"
+      "status": "reused"
+    },
+    {
+      "name": "tsne",
+      "status": "reused"
     }
-  ]
+  ],
+  "clustering": {
+    "status": "reused"
+  }
 }

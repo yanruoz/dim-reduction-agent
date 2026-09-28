@@ -1,0 +1,39 @@
+{
+  "params": {
+    "source": "pca",
+    "algorithm": "kmeans",
+    "k_range": [
+      3,
+      10
+    ],
+    "k": null,
+    "seed": 0,
+    "source_embedding": {
+      "hyperparameters": {
+        "n_components": 50
+      },
+      "seed": 0
+    }
+  },
+  "k": 3,
+  "k_was_fixed": false,
+  "silhouette_by_k": {
+    "3": 0.30410767685905205,
+    "4": 0.28891047522996854,
+    "5": 0.2562440833501705,
+    "6": 0.20434360884993677,
+    "7": 0.20604867637348778,
+    "8": 0.1416730180939174,
+    "9": 0.12923860328084621,
+    "10": 0.10225143783405163
+  },
+  "silhouette_at_k": 0.30410767685905205,
+  "cluster_sizes": [
+    1642,
+    686,
+    372
+  ],
+  "n_samples": 2700,
+  "n_scored": 2700,
+  "silhouette_subsampled": false
+}

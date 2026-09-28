@@ -1,0 +1,14 @@
+{
+  "method": "kernel_pca",
+  "hyperparameters": {
+    "n_components": 50,
+    "kernel": "rbf",
+    "random_state": 0
+  },
+  "seed": 0,
+  "runtime_seconds": 1.411,
+  "embedding_shape": [
+    2700,
+    50
+  ]
+}

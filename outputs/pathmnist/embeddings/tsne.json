@@ -1,13 +1,14 @@
 {
-  "method": "sparse_pca",
+  "method": "tsne",
   "hyperparameters": {
-    "n_components": 20,
+    "n_components": 2,
+    "perplexity": 30,
     "random_state": 0
   },
   "seed": 0,
-  "runtime_seconds": 657.211,
+  "runtime_seconds": 372.754,
   "embedding_shape": [
     89996,
-    20
+    2
   ]
 }

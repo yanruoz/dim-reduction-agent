@@ -1,0 +1,19 @@
+{
+  "method": "diffusion_maps",
+  "trustworthiness": 0.8466,
+  "trustworthiness_n_neighbors": 10,
+  "trustworthiness_subsampled": false,
+  "trustworthiness_n_samples_used": 2700,
+  "eigenvalues": [
+    0.10691573461729897,
+    0.03421251884734069,
+    0.024429953913250663,
+    0.013111608157674239,
+    0.011074689354865221,
+    0.00888723955453414,
+    0.006995902108302013,
+    0.006581051420767035,
+    0.005815039255947749,
+    0.0047041034913016125
+  ]
+}

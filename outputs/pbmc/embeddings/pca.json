@@ -4,7 +4,7 @@
     "n_components": 50
   },
   "seed": 0,
-  "runtime_seconds": 0.777,
+  "runtime_seconds": 0.831,
   "embedding_shape": [
     2700,
     50
