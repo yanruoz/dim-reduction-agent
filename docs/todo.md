@@ -21,6 +21,8 @@ Deadline: Mon 9/28, 11:59pm EST. Design details live in `docs/design.md`; this i
 ## Next, in order
 1. Manual 4-page `report.pdf`.
 
+(User-requested, 9/28: `data-profiling/SKILL.md` now names an explicit dataset-level modality — sparse count/omics-like, dense bounded-range/image-like, dense unbounded continuous, wide — for each decision-tree branch, with a new `references/data_type_taxonomy.md` explaining why each modality's typical preprocessing suits it, not just which profile number triggers it. Adapted from biostat-superpowers' per-column clinical-data taxonomy, scaled up to whole-matrix modality since this project's loader is numeric-only and applies one shared preprocessing block per dataset (no per-column branching). No pipeline code changed; pbmc's and pathmnist's existing preprocessing still matches the relevant branches (checked, not rerun).)
+
 ## Lower priority / deliberate limitations (state these in the report)
 - **Imputation limits**: single-value imputation only (median/mean/constant); no model-based or multiple imputation, and no test of whether values are missing at random.
 - **Categorical (non-numeric) features are unsupported**; the loader refuses them with a specific error. Design notes for picking it up later are in `design.md` §3.8.

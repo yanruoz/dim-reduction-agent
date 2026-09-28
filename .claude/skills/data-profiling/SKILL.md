@@ -23,6 +23,8 @@ Exactly seven, implemented in `scripts/reduce_dim.py`'s `PREPROCESSORS` registry
 
 ## Decision tree
 
+Before branching, read `references/data_type_taxonomy.md`: it names the dataset-level modalities (sparse count/omics-like, dense bounded-range/image-like, dense unbounded continuous, wide) that steps 1-4 below each correspond to, and why each modality's typical preprocessing suits it, not just a mechanical property-to-step lookup. Every `reason` should name which modality it's treating this dataset as, not just cite the raw number that triggered the branch — the number says *what* was measured, the modality says *why* that number implies this preprocessing for *this kind* of data. A dataset can combine more than one modality's steps (e.g. count-like *and* wide); one that doesn't clearly match any is a judgment call to make and state (taxonomy's "Ambiguous or mixed signal" section, CLAUDE.md rule 11), not a silent default.
+
 Work through these in order, starting with step 0 (missing values); more than one can apply to the same dataset. In the written plan, missing-value steps go first, then steps 1-4 as they apply.
 
 0. **Missing values come first** (`profile.json`'s `has_missing` is `true`). Numeric data only; the loader refuses non-numeric columns. Every method needs finite input, and `validate_plan.py` fails a plan that leaves missing values unhandled or puts these steps out of order. They must be the first steps in the list.
@@ -32,19 +34,19 @@ Work through these in order, starting with step 0 (missing values); more than on
    - Limitation to state in the reasons and the report: single-value imputation understates uncertainty and pulls imputed samples toward the feature centre, which can shrink apparent structure. Missing-not-at-random data (missingness that depends on the value or on group) will be biased by any of these fills.
    - If `has_missing` is `false`, add neither step.
 
-1. **Count-like data?** Non-negative, integer-valued, high sparsity in `profile.json`, and/or `DATA_DESCRIPTION.md` says the values are counts, reads, or UMIs. The description is the authority here; the loader supplies no modality hint, since every dataset is loaded the same way.
+1. **Sparse count / omics-like data?** Non-negative, integer-valued, high sparsity in `profile.json`, and/or `DATA_DESCRIPTION.md` says the values are counts, reads, or UMIs (taxonomy: "Sparse count / omics-like"). The description is the authority here; the loader supplies no modality hint, since every dataset is loaded the same way.
    - If yes: `normalize_total` then `log1p`, in that order. Cite the actual sparsity percentage and/or value range from `profile.json` in the reason (e.g. "97.4% sparse raw UMI counts per profile.json; normalizing removes per-cell sequencing-depth differences before log-compressing the heavy tail").
    - If `DATA_DESCRIPTION.md` says normalization was already applied upstream, skip this and say so; never double-normalize.
    - Do not add `standardize` after `normalize_total` + `log1p` + `select_top_variance` by default. It was tested on one 2,700-cell, 32,738-gene scRNA-seq set with no labels (2,000 top-variance genes, 50-PC PCA): coarse structure was nearly unchanged (k-means ARI 0.96 at k=4, 0.82 at k=8), but fine neighborhoods overlapped only 17% (mean Jaccard of 15-nearest-neighbor sets), and the 50 PCs captured 16.4% of variance instead of 28.9%, because every gene, including low-expression noisy ones, got equal weight. Without labels there is no way to call that better. One dataset is evidence, not a rule: if you add `standardize` here, say in the `reason` that it is a judgment call and name that alternative.
 
-2. **Is `n_features` large relative to `n_samples`?** Rough guide: `n_features` exceeds `n_samples`, or is in the thousands.
+2. **Wide data?** Rough guide: `n_features` exceeds `n_samples`, or is in the thousands (taxonomy: "Wide"; combines with whichever modality above or below also applies).
    - If yes: add `select_top_variance` after any count-normalization above, with `n_top_features` around `min(2000, n_features)`. Cite the actual `n_samples`/`n_features` numbers in the reason.
    - If `n_features <= n_samples` (a modest, already-manageable feature count), skip this step; cutting features when dimensionality isn't actually a problem just discards information for no reason.
 
-3. **Dense, naturally bounded-range data?** E.g. pixel intensities 0-255, or `DATA_DESCRIPTION.md` states a fixed value range. Not the same case as step 1.
+3. **Dense, naturally bounded-range (image/pixel-like) data?** E.g. pixel intensities 0-255, or `DATA_DESCRIPTION.md` states a fixed value range (taxonomy: "Dense, naturally bounded-range"). Not the same case as step 1.
    - If yes: `scale_unit_range`, so no feature dominates purely from raw scale. Cite the actual `value_range` from `profile.json`.
 
-4. **Dense, continuous, no natural bound, varying per-feature scales?** Not covered by 1 or 3.
+4. **Dense, continuous, unbounded, variable-scale (generic continuous) data?** Not covered by 1 or 3 (taxonomy: "Dense, continuous, unbounded, variable per-feature scale").
    - If yes: `standardize`.
 
 ## Output
