@@ -9,6 +9,7 @@
 """
 import argparse
 import hashlib
+import shutil
 import sys
 import urllib.request
 from pathlib import Path
@@ -16,6 +17,10 @@ from pathlib import Path
 import loaders
 
 ALLOWED_SCHEMES = ("http://", "https://", "file://")
+
+# Some hosts (e.g. exampledata.scverse.org) return HTTP 403 for urllib's default
+# "Python-urllib/x.y" User-Agent, so send an explicit one instead.
+USER_AGENT = "dim-reduction-agent-fetch/1.0"
 
 
 def md5_of(path, chunk=1 << 20):
@@ -54,7 +59,9 @@ def fetch(dataset):
 
     partial = target.with_name(target.name + ".part")
     try:
-        urllib.request.urlretrieve(spec["url"], partial)
+        req = urllib.request.Request(spec["url"], headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req) as resp, open(partial, "wb") as out:
+            shutil.copyfileobj(resp, out)
     except Exception as e:
         partial.unlink(missing_ok=True)
         raise ValueError(f"{dataset}: download from {spec['url']} failed: {e}") from e

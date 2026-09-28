@@ -322,6 +322,27 @@ class TestFetchData(LoaderTestCase):
             fetch_data.fetch("f")
         self.assertEqual(list(folder.glob("got.csv*")), [])
 
+    def test_download_sends_a_non_default_user_agent(self):
+        # Some hosts (e.g. exampledata.scverse.org) return HTTP 403 for urllib's default
+        # "Python-urllib/x.y" User-Agent; the real request must not use it.
+        import urllib.request
+        seen = {}
+        orig_urlopen = urllib.request.urlopen
+
+        def spy(req, *a, **kw):
+            seen["user_agent"] = req.get_header("User-agent")
+            return orig_urlopen(req, *a, **kw)
+
+        folder = self._dataset(self._source())
+        urllib.request.urlopen = spy
+        try:
+            fetch_data.fetch("f")
+        finally:
+            urllib.request.urlopen = orig_urlopen
+        self.assertEqual(seen.get("user_agent"), fetch_data.USER_AGENT)
+        self.assertNotIn("python-urllib", seen.get("user_agent", "").lower())
+        self.assertTrue((folder / "got.csv").exists())
+
     def test_refuses_non_http_file_schemes_and_missing_declarations(self):
         self.make("g", "## Loading\nfile: a.csv\nurl: ftp://example.org/a.csv\n")
         with self.assertRaisesRegex(ValueError, "must start with"):
