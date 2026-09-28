@@ -69,10 +69,16 @@ For unlabeled datasets, plots can be colored by data-derived clusters (k-means o
 
 Requires Python 3.10 or newer (developed on 3.13).
 
+Clone the repo, then run everything below from inside that cloned folder:
+
 ```bash
+git clone https://github.com/yanruoz/dim-reduction-agent.git
+cd dim-reduction-agent
 python -m venv venv
 venv/bin/pip install -r requirements.txt
 ```
+
+This creates the project's own isolated `venv/` and installs the pinned dependencies into it — never a system or base conda Python. Every command in this README and every command the agent itself runs (`venv/bin/python ...`) assumes this `venv/` exists at the repo root; run it once per clone, before anything else.
 
 Versions are pinned because t-SNE and UMAP layouts are somewhat version-sensitive.
 
