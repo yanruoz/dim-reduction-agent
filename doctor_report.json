@@ -1,42 +1,10 @@
 {
-  "check": "core",
+  "check": "report",
   "passed": true,
   "errors": [],
   "checks": [
     {
-      "module": "numpy",
-      "ok": true
-    },
-    {
-      "module": "pandas",
-      "ok": true
-    },
-    {
-      "module": "scipy",
-      "ok": true
-    },
-    {
-      "module": "sklearn",
-      "ok": true
-    },
-    {
-      "module": "anndata",
-      "ok": true
-    },
-    {
-      "module": "umap",
-      "ok": true
-    },
-    {
-      "module": "matplotlib",
-      "ok": true
-    },
-    {
-      "module": "data/pbmc/DATA_DESCRIPTION.md",
-      "ok": true
-    },
-    {
-      "module": "data/pbmc/pbmc3k_raw.h5ad",
+      "module": "matplotlib.backends.backend_pdf",
       "ok": true
     }
   ]

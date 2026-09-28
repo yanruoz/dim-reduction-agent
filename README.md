@@ -176,5 +176,9 @@ docs/design.md, todo.md      design notes and running status
 - **No QC filtering** of samples or features, and no domain annotation (for example cell types); the findings rules forbid naming classes the data does not label.
 - **Manifold layouts are pictures.** t-SNE and UMAP cluster sizes, shapes and distances are not findings. UMAP is deterministic here (fixed seed, single thread) but still sensitive to small numeric changes in its input.
 - **GPLVM** is not implemented, and the adversarial critic subagent is not built.
-- **Data-derived clusters** are k-means on PCA with k chosen by silhouette, which tends to favor coarse splits. They only color plots.
+- **Data-derived clusters** are k-means on PCA with k chosen by silhouette, which tends to favor coarse splits. They only color plots. Confirmed on the live pbmc run: the default scan picked k=2 and under-colored visible structure, so the plan was revised to a higher lower bound as a stated judgment call.
+- **Artifacts are keyed by method name only,** so a second run of the same method under a different seed or hyperparameter setting can't be kept alongside the first. The "two seeds or settings" check on a manifold method's structural claims has to use two different methods instead (e.g. UMAP and t-SNE), not two UMAP runs.
+- **No run history.** Rerunning `cluster.py` or reusing a method's artifacts overwrites the previous state (`metrics/clustering.json`, and `run_log.json`'s status), so an earlier attempt's own numbers aren't recoverable afterward; a plan revision's reasoning has to live in `plan.json`'s `reason` text, not in a diffable metrics history.
+- **No label-name mapping.** `DATA_DESCRIPTION.md` has no key for an index-to-name lookup, so a dataset that documents named classes is still plotted and reported with the raw integer labels.
+- **`sparse_pca` reports no variance-explained diagnostic**, since sklearn's `SparsePCA` has no `PCA`-style `explained_variance_ratio_` for its non-orthogonal components; its metrics/report rows are blank in those columns (disclosed by the report, not hidden).
 
