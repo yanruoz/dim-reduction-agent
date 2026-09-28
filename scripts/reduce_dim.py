@@ -182,10 +182,50 @@ def _run_kernel_pca(X, hp, seed):
 
 
 def _run_sparse_pca(X, hp, seed):
+    """Unlike PCA, sklearn's SparsePCA exposes no explained_variance_ratio_: its components_ are
+    sparse but not orthogonal, so there is no per-component eigendecomposition to report. What IS
+    well-defined is how much of the total variance falls in the SUBSPACE the components span,
+    independent of whether individual components are orthogonal to each other. Orthogonalizing
+    components_ (QR) gives an orthonormal basis for that same subspace; projecting the data onto it
+    and summing per-axis variances gives a valid, additive explained-variance decomposition, in the
+    order SparsePCA returned its components (not guaranteed strictly decreasing the way PCA's is,
+    since that ordering isn't variance-maximizing to begin with).
+
+    No deeper diagnostic fit here (unlike _run_pca's 4x-deeper fit): SparsePCA is expensive enough
+    at the requested size alone (minutes at pathmnist's scale) that fitting more components purely
+    for diagnostics isn't worth it. 90%-variance is reported only within what was actually
+    requested; if not reached there, it's a lower bound exactly like PCA's, just bounded by
+    n_components instead of a deeper diagnostic fit."""
     from sklearn.decomposition import SparsePCA
 
-    model = SparsePCA(n_components=hp.get("n_components", 2), random_state=seed)
-    return model.fit_transform(X), {}
+    n_requested = hp.get("n_components", 2)
+    model = SparsePCA(n_components=n_requested, random_state=seed)
+    embedding = model.fit_transform(X)
+
+    # np.var already re-centers internally (mean((x - mean(x))**2)), and mean/matmul commute, so
+    # projecting X (uncentered) onto Q and taking .var() gives exactly the same result as centering
+    # X first; no separate centering step needed here.
+    total_var = float(np.sum(X.var(axis=0, ddof=1)))
+    Q, _ = np.linalg.qr(model.components_.T)  # (n_features, n_components_fit), orthonormal columns
+    proj = X @ Q  # (n_samples, n_components_fit): orthogonal projection onto the spanned subspace
+    evr = (proj.var(axis=0, ddof=1) / total_var) if total_var > 0 else np.zeros(Q.shape[1])  # (n_components_fit,)
+
+    cumulative = np.cumsum(evr)
+    reached_90 = np.where(cumulative >= 0.90)[0]
+    if len(reached_90) > 0:
+        components_for_90pct, is_lower_bound = int(reached_90[0] + 1), False
+    else:
+        components_for_90pct, is_lower_bound = len(evr), True
+
+    return embedding, {
+        "explained_variance_ratio": evr.tolist(),
+        "explained_variance_ratio_diagnostic": evr.tolist(),  # no deeper fit; same as above, see docstring
+        "variance_explained_by_used_components": round(float(evr.sum()), 4),
+        "diagnostic_fit_components": len(evr),
+        "components_needed_for_90pct_variance": components_for_90pct,
+        "components_needed_for_90pct_variance_is_lower_bound": is_lower_bound,
+        "variance_diagnostic_is_subspace_based": True,  # flags the QR-orthogonalized method to evaluate.py/report.py
+    }
 
 
 def _run_mds(X, hp, seed):

@@ -223,14 +223,36 @@ if __name__ == "__main__":
         clustering = json.loads(clustering_path.read_text())
         block = plan["clustering"]
         scan = ", ".join(f"k={k}: {v:.3f}" for k, v in clustering["silhouette_by_k"].items() if v is not None)
-        how_k = (
-            f"k={clustering['k']} was fixed in the plan."
-            if clustering["k_was_fixed"]
-            else (
-                f"k={clustering['k']} was chosen as the value with the highest silhouette among "
-                f"k={clustering['params']['k_range'][0]} to {clustering['params']['k_range'][1]} ({scan})."
+        k_lo, k_hi = clustering["params"]["k_range"][0], clustering["params"]["k_range"][1]
+        selection = clustering.get("k_selection", {})
+        selected_by = selection.get("selected_by")
+        if clustering["k_was_fixed"]:
+            how_k = f"k={clustering['k']} was fixed in the plan."
+        elif selected_by == "density_cross_check":
+            viz = clustering["params"].get("viz_source")
+            how_k = (
+                f"k={clustering['k']} was chosen by a density cross-check, not silhouette alone: DBSCAN on the "
+                f"{viz} visualization (eps={selection['eps']:.4f}, auto-selected via the k-distance knee, "
+                f"min_samples={selection['min_samples']}) found {selection['n_significant_groups']} groups of "
+                f"size {selection['group_sizes']} well above noise; k={clustering['k']} is the smallest k in "
+                f"{k_lo}-{k_hi} where every one of those groups lands in its own k-means cluster on the "
+                f"{block['source']} embedding (silhouette {scan}). The visualization was used only to nominate "
+                f"candidate groups, never as an input to the clustering itself."
             )
-        )
+        elif selected_by == "density_cross_check_never_satisfied_in_range":
+            viz = clustering["params"].get("viz_source")
+            how_k = (
+                f"A density cross-check on the {viz} visualization found {selection['n_significant_groups']} "
+                f"candidate groups, but no k in {k_lo}-{k_hi} put every one of them in its own k-means cluster "
+                f"on the {block['source']} embedding, so k={clustering['k']} falls back to the highest "
+                f"silhouette in that range ({scan})."
+            )
+        else:
+            how_k = (
+                f"k={clustering['k']} was chosen as the value with the highest silhouette among "
+                f"k={k_lo} to {k_hi} ({scan}). No visualization_only embedding was available in this plan to "
+                "cross-check for a group silhouette alone might merge."
+            )
         scored = (
             f" Silhouette was scored on a fixed-seed subsample of {clustering['n_scored']:,} of {clustering['n_samples']:,} samples."
             if clustering["silhouette_subsampled"] else ""
@@ -302,17 +324,22 @@ if __name__ == "__main__":
         ),
         "variance_explained_by_used_components": (
             "Variance explained (PCs used)",
-            "The fraction of the total variance in the preprocessed data captured by the principal components "
-            "actually kept in the embedding: the sum of those components' explained-variance ratios (each "
-            "component's variance divided by the total). Ranges 0 to 1. PCA only; blank for methods it does "
-            "not apply to.",
+            "The fraction of the total variance in the preprocessed data captured by the components actually "
+            "kept in the embedding. For PCA, the sum of those components' explained-variance ratios (each "
+            "component's variance divided by the total). For Sparse PCA, whose components are not orthogonal, "
+            "no such per-component decomposition exists; instead this is the variance captured by the subspace "
+            "the components span (the components orthogonalized via QR, then variance summed along that "
+            "orthonormal basis) — a valid but different construction, marked in the sidecar JSON. Ranges 0 to "
+            "1. Blank for methods neither applies to.",
         ),
         "components_needed_for_90pct_variance": (
             "PCs for 90% variance",
-            "The smallest number of principal components whose cumulative explained variance reaches 90%, read "
-            "off a diagnostic PCA fit of up to min(4 x n_components, 200) components. A leading '>' means 90% "
-            "was not reached within that fit, so the true number is larger than shown. The scree plots show "
-            "the full curve.",
+            "The smallest number of components whose cumulative explained variance reaches 90%. For PCA, read "
+            "off a diagnostic fit of up to min(4 x n_components, 200) components, deeper than what the "
+            "embedding uses, so this can exceed the PCs actually kept. For Sparse PCA there is no deeper fit "
+            "(it is too expensive to refit just for diagnostics); this is bounded by the components actually "
+            "requested. Either way, a leading '>' means 90% was not reached within what was fit, so the true "
+            "number is larger than shown. The scree plots show the full curve.",
         ),
         "stress": (
             "MDS stress (Kruskal's Stress-1)",
@@ -399,12 +426,28 @@ if __name__ == "__main__":
             "No ground-truth labels available for this dataset; embedding quality assessed only via "
             "label-free trustworthiness, no supervised sanity check possible."
         )
+    subspace_based = [m["name"] for m in plan["methods"] if all_metrics.get(m["name"], {}).get("variance_diagnostic_is_subspace_based")]
+    if subspace_based:
+        limitation_lines.append(
+            f"{', '.join(subspace_based)}: 'variance explained' and 'PCs for 90%' come from the variance "
+            "captured by the subspace the (non-orthogonal) components span, not a per-component "
+            "eigendecomposition like PCA's; see the metric definitions above. Also bounded by the components "
+            "actually requested, not a deeper diagnostic fit, since refitting deeper is too expensive for this "
+            "method at this dataset's size."
+        )
     if clustering is not None:
+        how_k_short = (
+            "picked by a density cross-check against a visualization"
+            if clustering.get("k_selection", {}).get("selected_by") == "density_cross_check"
+            else "picked by silhouette alone"
+        )
         limitation_lines.append(
             f"The cluster colors on unlabeled plots come from k-means (k={clustering['k']}) on the "
-            f"{plan['clustering']['source']} embedding, with k picked by silhouette rather than validated against any "
-            "ground truth. Different k, a different algorithm, or a different source embedding would color the "
-            "same points differently; treat the colors as a visual aid, not as groups that are known to exist."
+            f"{plan['clustering']['source']} embedding, with k {how_k_short}, not validated against any ground "
+            "truth. Different k, a different algorithm, or a different source embedding would color the same "
+            "points differently; treat the colors as a visual aid, not as groups that are known to exist. Even "
+            "the density cross-check only tests whether k-means keeps DBSCAN's candidate groups separate; it "
+            "cannot confirm those candidate groups are meaningful in any domain sense."
         )
     if profile.get("has_missing"):
         steps = [p_["step"] for p_ in plan.get("preprocessing", [])]

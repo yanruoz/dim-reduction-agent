@@ -31,6 +31,7 @@ SIDECAR_FIELDS_TO_COPY = (
     "diagnostic_fit_components",
     "components_needed_for_90pct_variance",
     "components_needed_for_90pct_variance_is_lower_bound",
+    "variance_diagnostic_is_subspace_based",
     "stress",
     "eigenvalues",
 )
