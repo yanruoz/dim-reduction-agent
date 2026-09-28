@@ -3,7 +3,7 @@
     "source": "pca",
     "algorithm": "kmeans",
     "k_range": [
-      4,
+      2,
       10
     ],
     "k": null,
@@ -13,11 +13,40 @@
         "n_components": 50
       },
       "seed": 0
+    },
+    "viz_source": "umap",
+    "viz_embedding": {
+      "hyperparameters": {
+        "n_components": 2,
+        "n_neighbors": 15,
+        "min_dist": 0.1,
+        "random_state": 0
+      },
+      "seed": 0
     }
   },
   "k": 4,
   "k_was_fixed": false,
+  "k_selection": {
+    "used": true,
+    "eps": 0.21783467369882908,
+    "min_samples": 10,
+    "n_significant_groups": 3,
+    "group_sizes": [
+      1613,
+      679,
+      347
+    ],
+    "selected_by": "density_cross_check",
+    "majority_cluster_per_group": {
+      "0": 0,
+      "1": 3,
+      "2": 1
+    }
+  },
   "silhouette_by_k": {
+    "2": 0.36534228003589736,
+    "3": 0.30410767685905205,
     "4": 0.28891047522996854,
     "5": 0.2562440833501705,
     "6": 0.20434360884993677,

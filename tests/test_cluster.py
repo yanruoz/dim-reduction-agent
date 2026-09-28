@@ -92,6 +92,118 @@ class TestChooseAndFit(unittest.TestCase):
         json.dumps(info, allow_nan=False)
 
 
+def satellite_scenario(seed=0):
+    """A: big blob at the origin. B: a small, real satellite blob close to A -- close enough that
+    a coarse k merges it with A even though it's genuinely a separate group. C: a large, obviously
+    separate blob far from both. Mirrors the pbmc case that motivated the density cross-check: a
+    silhouette-argmax scan alone picks k=2 (A+B merged, C alone) because that split scores highest,
+    even though B is real. Returns (Z, viz, truth) with truth in {0: A, 1: B, 2: C}."""
+    rng = np.random.default_rng(seed)
+    A = rng.normal(size=(150, 5))
+    B = rng.normal(size=(40, 5)) * 0.5 + np.array([6, 0, 0, 0, 0])
+    C = rng.normal(size=(60, 5)) + np.array([20, 0, 0, 0, 0])
+    Z = np.vstack([A, B, C])
+    truth = np.array([0] * 150 + [1] * 40 + [2] * 60)
+    return Z, Z[:, :2], truth  # first two dims stand in for a "viz" embedding; the same gap is visible there
+
+
+class TestKneeEps(unittest.TestCase):
+    def test_finds_a_larger_eps_for_widely_separated_blobs_than_for_one_tight_blob(self):
+        rng = np.random.default_rng(0)
+        tight = rng.normal(size=(200, 2)) * 0.2
+        spread_out = np.vstack([rng.normal(size=(100, 2)) * 0.2, rng.normal(size=(100, 2)) * 0.2 + 20])
+        eps_tight = cluster._knee_eps(tight, min_samples=10)
+        eps_spread = cluster._knee_eps(spread_out, min_samples=10)
+        self.assertGreater(eps_tight, 0)
+        # the knee sits at the density drop; two far-apart blobs' curve breaks at a much larger gap
+        self.assertLess(eps_tight, eps_spread)
+
+
+class TestDensityReferenceGroups(unittest.TestCase):
+    def test_recovers_the_known_groups_and_drops_noise(self):
+        rng = np.random.default_rng(0)
+        Z = np.vstack([rng.normal(size=(100, 2)), rng.normal(size=(80, 2)) + 15, rng.normal(size=(3, 2)) + 40])
+        groups, eps = cluster._density_reference_groups(Z, min_group_size=10)
+        self.assertGreater(eps, 0)
+        sizes = sorted(int(m.sum()) for m in groups.values())
+        self.assertEqual(sizes, [80, 100])  # the 3-point group is below min_group_size, excluded
+
+    def test_min_group_size_excludes_a_group_dbscan_itself_would_still_keep(self):
+        # Same data as above, but with min_group_size raised past the 80-point group: DBSCAN's own
+        # min_samples doesn't exclude it (it's a real, dense cluster), only the explicit filter does.
+        rng = np.random.default_rng(0)
+        Z = np.vstack([rng.normal(size=(100, 2)), rng.normal(size=(80, 2)) + 15, rng.normal(size=(3, 2)) + 40])
+        groups, _ = cluster._density_reference_groups(Z, min_group_size=90)
+        self.assertEqual(sorted(int(m.sum()) for m in groups.values()), [100])
+
+    def test_a_single_uniform_blob_yields_at_most_one_group(self):
+        Z = np.random.default_rng(0).normal(size=(200, 2))
+        groups, _ = cluster._density_reference_groups(Z, min_group_size=10)
+        self.assertLessEqual(len(groups), 1)
+
+
+class TestGroupsMapToDistinctClusters(unittest.TestCase):
+    def test_true_when_every_group_has_its_own_majority_cluster(self):
+        groups = {0: np.array([True, True, False, False]), 1: np.array([False, False, True, True])}
+        labels = np.array([0, 0, 1, 1])
+        distinct, majority = cluster._groups_map_to_distinct_clusters(groups, labels, n_clusters=2)
+        self.assertTrue(distinct)
+        self.assertEqual(majority, {0: 0, 1: 1})
+
+    def test_false_when_two_groups_share_a_majority_cluster(self):
+        groups = {0: np.array([True, True, False, False]), 1: np.array([False, False, True, True])}
+        labels = np.array([0, 0, 0, 0])  # both groups end up mostly in cluster 0
+        distinct, majority = cluster._groups_map_to_distinct_clusters(groups, labels, n_clusters=1)
+        self.assertFalse(distinct)
+        self.assertEqual(majority, {0: 0, 1: 0})
+
+
+class TestSelectK(unittest.TestCase):
+    def test_density_cross_check_finds_the_merged_satellite_that_silhouette_alone_misses(self):
+        Z, viz, truth = satellite_scenario()
+        labels, info = cluster.choose_and_fit(Z, [2, 5], None, seed=0, viz_embedding=viz)
+        self.assertEqual(info["k"], 3)  # not 2: silhouette alone favors 2 (A+B merged, see below)
+        self.assertEqual(info["k_selection"]["selected_by"], "density_cross_check")
+        self.assertEqual(info["k_selection"]["n_significant_groups"], 3)
+        # each true group lands in its own cluster
+        for t in range(3):
+            self.assertEqual(len(np.unique(labels[truth == t])), 1)
+
+    def test_without_a_viz_embedding_the_same_data_falls_back_to_plain_silhouette_and_merges_the_satellite(self):
+        Z, _, truth = satellite_scenario()
+        labels, info = cluster.choose_and_fit(Z, [2, 5], None, seed=0, viz_embedding=None)
+        self.assertEqual(info["k"], 2)  # the failure mode this mechanism exists to catch
+        self.assertEqual(info["k_selection"], {"used": False, "selected_by": "silhouette_argmax"})
+        self.assertEqual(len(np.unique(labels[truth == 0])) | len(np.unique(labels[truth == 1])), 1)
+
+    def test_no_forced_extra_split_when_there_is_no_real_density_substructure(self):
+        # A single blob plus one separate blob: no hidden satellite to find, so the density check
+        # (if it finds <2 significant groups on the viz side) must not force k past what fits.
+        rng = np.random.default_rng(0)
+        Z = np.vstack([rng.normal(size=(150, 5)), rng.normal(size=(150, 5)) + 20])
+        viz = Z[:, :2]
+        _, info = cluster.choose_and_fit(Z, [2, 6], None, seed=0, viz_embedding=viz)
+        self.assertEqual(info["k"], 2)
+
+    def test_never_satisfied_in_range_falls_back_to_silhouette_argmax(self):
+        Z, viz, _ = satellite_scenario()
+        # range excludes k=3, the only k where the density check passes for this scenario
+        labels, info = cluster.choose_and_fit(Z, [2, 2], None, seed=0, viz_embedding=viz)
+        self.assertEqual(info["k"], 2)
+        self.assertIn(info["k_selection"]["selected_by"], ("density_cross_check_never_satisfied_in_range",))
+
+    def test_fixed_k_skips_the_density_check_entirely(self):
+        Z, viz, _ = satellite_scenario()
+        _, info = cluster.choose_and_fit(Z, [2, 5], 4, seed=0, viz_embedding=viz)
+        self.assertEqual(info["k"], 4)
+        self.assertEqual(info["k_selection"], {"selected_by": "fixed"})
+
+    def test_info_is_json_safe_with_a_viz_embedding(self):
+        Z, viz, _ = satellite_scenario()
+        _, info = cluster.choose_and_fit(Z, [2, 5], None, seed=0, viz_embedding=viz)
+        json.dumps(info, allow_nan=False)
+
+
 class TestRun(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -154,6 +266,65 @@ class TestRun(unittest.TestCase):
         plan = {"seed": 0, "clustering": {"source": "pca", "algorithm": "dbscan", "reason": "r"}}
         with self.assertRaisesRegex(ValueError, "algorithm must be one of"):
             cluster.run("d", plan)
+
+
+class TestRunUsesVizEmbeddingWhenDeclared(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._cwd = os.getcwd()
+        os.chdir(self._tmp.name)
+        out = Path("outputs/d")
+        (out / "embeddings").mkdir(parents=True)
+        self.Z, self.viz, self.truth = satellite_scenario()
+        np.save(out / "embeddings" / "pca.npy", self.Z)
+        (out / "embeddings" / "pca.json").write_text(json.dumps({"hyperparameters": {}, "seed": 0}))
+        np.save(out / "embeddings" / "umap.npy", self.viz)
+        (out / "embeddings" / "umap.json").write_text(json.dumps({"hyperparameters": {"n_neighbors": 15}, "seed": 0}))
+        np.save(out / "embeddings" / "tsne.npy", self.viz)
+        (out / "embeddings" / "tsne.json").write_text(json.dumps({"hyperparameters": {}, "seed": 0}))
+        self.plan = {
+            "seed": 0,
+            "methods": [
+                {"name": "pca", "role": "general_purpose"},
+                {"name": "umap", "role": "visualization_only"},
+                {"name": "tsne", "role": "visualization_only"},
+            ],
+            "clustering": {"source": "pca", "k_range": [2, 5], "reason": "r"},
+        }
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+        self._tmp.cleanup()
+
+    def test_a_umap_embedding_declared_in_methods_is_used_and_finds_the_satellite(self):
+        self.assertEqual(cluster.run("d", self.plan), "ok")
+        m = json.loads(Path("outputs/d/metrics/clustering.json").read_text())
+        self.assertEqual(m["k"], 3)
+        self.assertEqual(m["k_selection"]["selected_by"], "density_cross_check")
+        self.assertEqual(m["params"]["viz_source"], "umap")  # preferred over tsne per VIZ_PREFERENCE
+
+    def test_umap_is_preferred_over_tsne_when_both_are_present(self):
+        cluster.run("d", self.plan)
+        m = json.loads(Path("outputs/d/metrics/clustering.json").read_text())
+        self.assertEqual(m["params"]["viz_source"], "umap")
+
+    def test_tsne_is_used_when_umap_is_not_in_the_plan(self):
+        plan = dict(self.plan, methods=[m for m in self.plan["methods"] if m["name"] != "umap"])
+        cluster.run("d", plan)
+        m = json.loads(Path("outputs/d/metrics/clustering.json").read_text())
+        self.assertEqual(m["params"]["viz_source"], "tsne")
+
+    def test_a_regenerated_viz_embedding_invalidates_the_cache(self):
+        cluster.run("d", self.plan)
+        (Path("outputs/d/embeddings/umap.json")).write_text(json.dumps({"hyperparameters": {"n_neighbors": 30}, "seed": 0}))
+        self.assertEqual(cluster.run("d", self.plan), "ok")  # not "reused": the viz fingerprint changed
+
+    def test_no_visualization_only_method_in_the_plan_falls_back_to_silhouette_only(self):
+        plan = dict(self.plan, methods=[m for m in self.plan["methods"] if m["name"] == "pca"])
+        cluster.run("d", plan)
+        m = json.loads(Path("outputs/d/metrics/clustering.json").read_text())
+        self.assertEqual(m["k_selection"]["selected_by"], "silhouette_argmax")
+        self.assertIsNone(m["params"]["viz_source"])
 
 
 if __name__ == "__main__":
