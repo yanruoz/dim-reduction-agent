@@ -6,6 +6,7 @@
 """
 import argparse
 import json
+import textwrap
 from pathlib import Path
 
 import matplotlib
@@ -105,10 +106,21 @@ def make_scatter(embedding, y, dataset, method, title=None, color_note=None, lab
         subtitle += f", {color_note}"
     if embedding.shape[1] > 2:
         subtitle += f", showing dims 1-2 of {embedding.shape[1]}"
-    # Title left-aligned with the subtitle on its own line beneath it, so a
-    # long subtitle can't collide with a centered title.
-    ax.set_title(title or f"{dataset}: {method}", fontsize=11, loc="left", pad=18)
-    ax.text(0.0, 1.015, subtitle, transform=ax.transAxes, fontsize=8, color="#898781")
+    # A cluster-colored subtitle can run long (e.g. "n=2,700, colored by data-derived clusters
+    # (k-means on pca, k=3), showing dims 1-2 of 10"); wrap it instead of letting it clip at the
+    # figure's right edge. Title left-aligned with the subtitle beneath it either way. Both are
+    # placed by a point offset from the axes' top edge (not an axes-fraction one), so the spacing
+    # stays correct regardless of the axes' pixel size or how many subtitle lines there are.
+    subtitle_lines = textwrap.wrap(subtitle, width=58) or [subtitle]
+    ax.set_title(title or f"{dataset}: {method}", fontsize=11, loc="left", pad=18 + 11 * (len(subtitle_lines) - 1))
+    for i, line in enumerate(subtitle_lines):
+        # Reading order top-to-bottom: line 0 sits highest (closest to the title), the last
+        # line sits lowest (right above the axes); each line is one font-size step apart.
+        offset_pt = 3 + 11 * (len(subtitle_lines) - 1 - i)
+        ax.annotate(
+            line, xy=(0, 1), xycoords="axes fraction", xytext=(0, offset_pt), textcoords="offset points",
+            ha="left", va="bottom", fontsize=8, color="#898781", annotation_clip=False,
+        )
 
     fig.tight_layout()
     return fig

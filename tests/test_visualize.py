@@ -84,6 +84,33 @@ class TestMakeScatter(unittest.TestCase):
         fig = visualize.make_scatter(self.emb, np.repeat([0, 1], 30), "d", "pca", label_fn=lambda c: f"cluster {int(c) + 1}")
         self.assertEqual([t.get_text() for t in fig.axes[0].get_legend().get_texts()], ["cluster 1", "cluster 2"])
 
+    def test_long_subtitle_wraps_onto_multiple_lines_instead_of_running_off_the_figure(self):
+        # Regression: a long cluster-coloring note used to run past the figure's right edge and
+        # get clipped mid-word (e.g. "showing dims 1-2 o..."); it must now be split into full lines.
+        note = "colored by data-derived clusters (k-means on pca, k=3)"
+        fig = visualize.make_scatter(np.random.default_rng(0).normal(size=(2700, 10)), np.repeat([0, 1, 2], 900), "pbmc", "diffusion_maps", color_note=note)
+        texts = [t.get_text() for t in fig.axes[0].texts]
+        self.assertGreater(len(texts), 1)  # split across more than one text object
+        for t in texts:
+            self.assertLessEqual(len(t), 58)
+        joined = " ".join(texts)
+        self.assertIn("colored by data-derived clusters", joined)
+        self.assertIn("showing dims 1-2 of 10", joined)  # the tail that used to be clipped survives whole
+        self.assertNotIn("...", joined)
+
+    def test_subtitle_lines_do_not_collide_with_the_title(self):
+        note = "colored by data-derived clusters (k-means on pca, k=3)"
+        fig = visualize.make_scatter(np.random.default_rng(0).normal(size=(2700, 10)), np.repeat([0, 1, 2], 900), "pbmc", "diffusion_maps", color_note=note)
+        fig.canvas.draw()  # window extents need a render pass to be populated
+        ax = fig.axes[0]
+        title_bottom = ax.title.get_window_extent().y0
+        extents = sorted(((t.get_window_extent().y0, t.get_window_extent().y1) for t in ax.texts), key=lambda e: -e[1])
+        self.assertTrue(all(top <= title_bottom for _, top in extents), (title_bottom, extents))
+        self.assertGreaterEqual(len(extents), 2)
+        # the lines themselves must also not stack on top of each other
+        for (bottom, _), (_, next_top) in zip(extents, extents[1:]):
+            self.assertLess(next_top, bottom, extents)
+
     def test_umap_axes_stay_tickless_with_cluster_colors(self):
         fig = visualize.make_scatter(self.emb[:, :2], np.repeat([0, 1], 30), "d", "umap")
         self.assertEqual(list(fig.axes[0].get_xticks()), [])
