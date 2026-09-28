@@ -91,12 +91,14 @@ Each dataset lives in `data/<name>/` with a `DATA_DESCRIPTION.md`, which is the 
 
 Supported files: csv, tsv, txt, npy, npz, h5ad. Every dataset, including the two below, goes through the same loader.
 
-To download the two datasets used here (a one-time setup step, never done mid-analysis):
+To download the two datasets used here:
 
 ```bash
 venv/bin/python scripts/fetch_data.py --dataset pbmc
 venv/bin/python scripts/fetch_data.py --dataset pathmnist
 ```
+
+Doing this ahead of time is optional, not required: the agent's own step 1 already runs `doctor.py`, and if it reports a missing data file with a `url:` declared, the agent fetches it itself the same way, once, before continuing. The same is true for a missing Python package (`pip install -r requirements.txt`, the pinned versions only, never an unpinned install). Either way, if that one attempt doesn't resolve it, the agent stops and reports exactly what's missing rather than guessing further.
 
 - `pbmc`: Scanpy's raw PBMC 3k single-cell counts (2,700 cells, 32,738 genes, no labels).
 - `pathmnist`: MedMNIST PathMNIST training images (89,996 flattened 28×28×3 images, 9 tissue classes).
