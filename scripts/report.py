@@ -461,7 +461,7 @@ if __name__ == "__main__":
     if not findings:
         limitation_lines.append("No written interpretation (findings.md) was supplied for this run; the pages above are numbers and figures only.")
     if not critique:
-        limitation_lines.append("No adversarial critique/revision pass was performed for this run (critic subagent not yet built).")
+        limitation_lines.append("No adversarial critique/revision pass was performed for this run (critic subagent not built or produced nothing for this dataset).")
     if not limitation_lines:
         limitation_lines.append("No known limitations beyond what's noted above for each method.")
     pages.extend(text_pages("Limitations", [(None, limitation_lines)]))

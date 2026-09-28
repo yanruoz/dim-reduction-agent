@@ -35,7 +35,7 @@ description: Pick 2-4 dimension-reduction methods and their hyperparameters give
 - `clustering`: optional, see "Coloring unlabeled plots" below.
 - `evaluation`: informational only, states your intended evaluation approach for the eventual report. `evaluate.py` computes its own fixed metrics per method regardless of what's listed here (trustworthiness for any embedding, explained variance ratio for PCA-family methods, stress for MDS, etc.); this field doesn't control that, it's a note to yourself and to the reporting step about what to emphasize.
 - `seed`: one integer for the whole plan; every method's own `random_state` hyperparameter, if it has one, must equal this (`validate_plan.py` warns if not).
-- `revision`/`critique_applied`: start at `1`/`null`; only touched by the one-time critique-and-revise loop (step 7 of CLAUDE.md), if that stage exists yet.
+- `revision`/`critique_applied`: start at `1`/`null`; only touched by the one-time critique-and-revise loop (step 7 of CLAUDE.md, `.claude/agents/dr-critic.md`). After the one revision that loop makes: `revision` becomes `2`, and `critique_applied` is a short string naming what changed and why, not just `true`.
 
 ## Coloring unlabeled plots (`clustering` block)
 
