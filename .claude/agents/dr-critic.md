@@ -28,6 +28,8 @@ Check exactly these five things. Each is grounded in what `plan.json` + `metrics
 
 Anything about `findings.md` (it doesn't exist yet at this stage — this critique happens before it's written), report formatting, whether a method's runtime was too slow, or any deliberate, already-documented limitation of this pipeline (categorical features are unsupported, GPLVM isn't implemented, etc.). Raising one of those is noise, not a finding.
 
+If `metrics/clustering.json` shows `k_selection.selected_by: "density_cross_check"`, don't recommend a different k just because it doesn't equal `n_significant_groups` — that's not a bug. k-means' partition boundaries don't have to line up with the density groups DBSCAN found; a higher k can be genuinely necessary to keep two density-distinct groups from landing in the same k-means cluster (`majority_cluster_per_group` in that same file is the evidence this actually happened, not a guess). Second-guessing that number from `silhouette_by_k` alone, without engaging with `majority_cluster_per_group`, produced a wrong recommendation once already (a live run tried the suggested lower k and it re-merged a real, visually distinct group). Only flag the clustering `k` if you can point to a specific problem with the recorded evidence itself, not just a smaller k that scores higher on silhouette.
+
 ## Output
 
 Write `outputs/<dataset>/critique.json` (the dataset name comes from `plan.json`'s own `"dataset"` field) with exactly this shape:
