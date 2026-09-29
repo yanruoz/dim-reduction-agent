@@ -149,6 +149,15 @@ def choose_and_fit(Z, k_range, k, seed, viz_embedding=None):
     remap[order] = np.arange(best_k)
     labels = remap[labels]
 
+    # k_selection["majority_cluster_per_group"], if present, was computed on the pre-relabel
+    # k-means numbering (inside _select_k, before this remap exists); translate it through the
+    # same remap so its cluster indices actually match cluster_sizes/the saved labels below,
+    # instead of silently referring to a numbering nothing else in this file uses.
+    if "majority_cluster_per_group" in k_selection:
+        k_selection["majority_cluster_per_group"] = {
+            g: int(remap[c]) for g, c in k_selection["majority_cluster_per_group"].items()
+        }
+
     info = {
         "k": int(best_k),
         "k_was_fixed": k is not None,

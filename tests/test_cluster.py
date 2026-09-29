@@ -268,6 +268,32 @@ class TestRun(unittest.TestCase):
             cluster.run("d", plan)
 
 
+class TestMajorityClusterPerGroupMatchesFinalLabels(unittest.TestCase):
+    def test_recorded_cluster_indices_match_the_final_size_relabeled_clusters(self):
+        # Regression: majority_cluster_per_group used to be computed on KMeans' raw, pre-relabel
+        # numbering inside _select_k, then never translated through the later size-based remap,
+        # so it could silently disagree with cluster_sizes and the actual saved labels (found live).
+        # seed=1: chosen because at this seed, KMeans' raw (pre-relabel) cluster numbering for
+        # k=3 is [2, 1, 0] relative to size order, not already identity -- so this actually
+        # exercises the remap, unlike seed=0 where sklearn happens to hand back cluster 0 as
+        # already the largest and the bug would pass undetected.
+        Z, viz, _ = satellite_scenario()  # data generation stays at its default seed
+        labels, info = cluster.choose_and_fit(Z, [2, 5], None, seed=1, viz_embedding=viz)
+        sel = info["k_selection"]
+        self.assertEqual(sel["selected_by"], "density_cross_check")
+
+        n = Z.shape[0]
+        idx = np.arange(n)  # satellite_scenario's n is well under SILHOUETTE_SCAN_SIZE, so idx == arange(n)
+        min_size = max(int(cluster.DENSITY_MIN_GROUP_FRACTION * len(idx)), cluster.DENSITY_MIN_SAMPLES)
+        groups, _ = cluster._density_reference_groups(viz[idx], min_size)  # recomputed independently
+
+        self.assertTrue(sel["majority_cluster_per_group"])  # the scenario always finds groups; guard against a vacuous pass
+        for g_str, recorded_cluster in sel["majority_cluster_per_group"].items():
+            mask = groups[int(g_str)]
+            actual_majority = int(np.argmax(np.bincount(labels[idx][mask], minlength=info["k"])))
+            self.assertEqual(recorded_cluster, actual_majority, g_str)
+
+
 class TestRunUsesVizEmbeddingWhenDeclared(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
