@@ -1,0 +1,63 @@
+\documentclass[10.5pt]{article}
+\usepackage[margin=0.85in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.0em}{0.5em}
+\setlength{\parskip}{0.55em}
+\setlength{\parindent}{0pt}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+
+\pagenumbering{gobble}
+
+\begin{document}
+
+{\LARGE\bfseries Report: An Autonomous Dimension-Reduction and EDA Agent}
+
+\vspace{0.8em}
+
+\section{System architecture}
+
+The system is a harness-only agent: Claude Code is the sole reasoning engine, driven entirely by a project-root \code{CLAUDE.md} and three just-in-time skills (\code{data-profiling}, \code{method-selection}, \code{reporting}). There is no separate LLM-API planner, no LangChain, and no agent framework --- every number or figure in the output comes from a deterministic Python script, so the model's role is to decide and to write, never to compute.
+
+Given one instruction naming a dataset (e.g.\ ``do the data analysis on data/pbmc''), the agent runs a fixed nine-step sequence: (1) a preflight check (\code{doctor.py}) for required packages and the data file, self-healing a missing pinned package or a missing-but-declared data file with one bounded, logged fix before giving up; (2) profiling (\code{profiler.py}) into \code{profile.json}; (3) consulting the two decision skills; (4) writing \code{plan.json}, with every preprocessing step and method carrying a dataset-specific \emph{reason}; (5) validating the plan (\code{validate_plan.py}) against a fixed schema and guard rails --- nothing runs unless this passes; (6) executing the plan (\code{run_plan.py}), which calls \code{reduce_dim.py} $\to$ \code{evaluate.py} $\to$ (\code{cluster.py} if applicable) $\to$ \code{visualize.py} per method, reusing any artifact that already matches the plan's hyperparameters and seed; (7) an adversarial critique pass (\code{dr-critic}, a subagent dispatched with only the plan, metrics, and figures --- never the builder's own reasoning), addressed with at most one plan revision; (8) a written findings section plus a PDF report (\code{report.py}, matplotlib \code{PdfPages}); (9) a fixed self-check checklist. State lives entirely in JSON files at every step, so any stage can be resumed or rerun independently.
+
+The pipeline is intentionally data-type-agnostic: one generic loader handles CSV/TSV/NPY/NPZ/H5AD alike, guided only by a \texttt{\#\# Loading} section in each dataset's \code{DATA_DESCRIPTION.md}, and no code anywhere names \code{pbmc} or \code{pathmnist} specifically. This was verified by running an unregistered synthetic CSV through the full pipeline unmodified.
+
+\section{How the agent makes decisions}
+
+\textbf{Preprocessing} is chosen by matching \code{profile.json}'s properties (sparsity, integer-valued-ness, value range, feature-to-sample ratio, missingness) against a small named-modality taxonomy --- sparse count/omics-like, dense bounded-range/image-like, dense unbounded continuous, or wide --- adapted from a general clinical-data taxonomy but scaled to whole-matrix modality, since this pipeline applies one shared preprocessing block per dataset rather than per-column rules. Missing-value handling (\code{drop_missing_features}, \code{impute}) always runs first when needed, enforced by both a static plan check and a runtime finite-value guard.
+
+\textbf{Methods} are chosen by size and a fixed role taken from \code{plan_schema.METHOD_ROLES}: \code{general_purpose} methods (PCA, its required variant, Isomap, Diffusion Maps) may feed further computation; \code{local_structure_only} methods preserve neighborhoods only; \code{visualization_only} methods (t-SNE, UMAP) are for plotting and self-diagnostics alone and can never feed another method or a real clustering step --- \code{validate_plan.py} enforces this mechanically. Methods whose cost is roughly $O(N^2)$ (Kernel PCA, MDS, Isomap, Diffusion Maps) are gated by sample count and replaced by a cheaper alternative in the same role above $\sim$5{,}000 samples.
+
+\textbf{Every decision is logged.} \code{validate_plan.py} rejects a placeholder reason (``standard choice'' and similar); an unresolved ambiguity must be stated as a judgment call with named alternatives, not silently resolved.
+
+\textbf{Unlabeled-dataset coloring} uses k-means on a \code{general_purpose} embedding, with $k$ chosen by a density cross-check rather than silhouette alone: DBSCAN on a \code{visualization_only} embedding (with an automatic, parameter-free \code{eps}) nominates candidate groups from density; the smallest $k$ where every group lands in its own distinct k-means cluster is selected. Silhouette alone favors the coarsest split in a range and was observed to under-color a real structure on pbmc; the density cross-check corrects this without hand-tuning, and was independently confirmed on a synthetic case with a known-correct answer.
+
+\textbf{Adversarial critique.} A subagent (\code{dr-critic}), given only the plan, metrics, and figures for one dataset, checks five things a deterministic script cannot: an uncross-checked manifold claim, a metric contradicting the plan's own stated expectation, a preprocessing mismatch, a hyperparameter reason that is generic without being a literal placeholder, and label knowledge leaking into an unsupervised hyperparameter's \emph{reasoning} (not just the feature matrix, which the loader already protects structurally). Its verdict never gates the report --- a final report is always produced --- but a real finding is addressed with exactly one plan revision or stated as a limitation. On pbmc, the critique's Diffusion Maps finding was addressed by trying a narrower kernel width; that collapsed the embedding to a single point, so the agent reverted to the default and documented the method's near-duplication of PCA as a limitation instead --- an attempted fix that failed is itself logged, not silently discarded.
+
+\section{Tools and AI models used}
+
+Claude Code (Claude Sonnet 5) is the only model in the loop, used purely for planning, decision-making, and writing prose --- never for numerical computation. All computation uses NumPy, SciPy, scikit-learn, UMAP-learn, and AnnData (for \code{.h5ad} I/O); figures and the PDF report use Matplotlib. No external API calls occur during analysis; a separate, explicitly-invoked script (\code{fetch_data.py}) is the only network access, used solely to download a dataset's own declared, checksummed source file, never mid-analysis.
+
+\section{Experimental results}
+
+\textbf{PBMC 3k} (2{,}700 cells $\times$ 32{,}738 genes, 97.4\% zeros, raw UMI counts, no labels): preprocessed by per-cell total-count normalization, log1p, and the 2{,}000 highest-variance genes. PCA (50 components) reached trustworthiness 0.9344, keeping 0.2904 of the variance ($>$200 components would be needed for 90\%). Kernel PCA, with an explicit RBF \code{gamma} of 0.0017 rather than the library's \code{1/n_features} default (informed by \code{method-selection/SKILL.md}'s guidance to check for this after an earlier run showed the default behaving almost linearly), reached 0.8824. Diffusion Maps (10 components) reached 0.8466; UMAP (15 neighbors) 0.7740; t-SNE (perplexity 30) 0.8023. These are not a ranking, since the embeddings differ in dimensionality. Unlabeled plots were colored by k-means on the PCA embedding with $k=4$ (1{,}330 / 685 / 348 / 337 cells), chosen by the automatic density cross-check, not by silhouette alone. Every embedding shows three well-separated regions plus one gradient-like region, and a small outlier group too small for the clustering to isolate on its own.
+
+\textbf{PathMNIST} (89{,}996 images $\times$ 2{,}352 flattened 28$\times$28$\times$3 pixel values, 9 tissue labels, used only for coloring and a supervised sanity check): preprocessed by rescaling pixels to $[0,1]$; at this sample size, methods needing an all-pairs distance matrix are infeasible, so Sparse PCA served as the required PCA variant. PCA (50 components) reached trustworthiness 0.9820 (0.7907 of the variance, 178 components for 90\%; the first component alone accounts for 0.5465). Sparse PCA (20 components) reached 0.9435 (0.7154 of the variance, by the subspace its non-orthogonal components span). UMAP (30 neighbors) reached 0.8127; t-SNE (perplexity 30) 0.8347. Label silhouette was negative for every method ($-0.0336$ to $-0.0662$): raw-pixel distance does not separate the 9 tissue types well on average, though the figures agree that one label forms its own detached region and a second forms a fairly coherent one, while the rest overlap heavily --- expected, since the description notes that downsampling from 224$\times$224 loses the texture that would distinguish them, and pixel similarity need not imply tissue similarity.
+
+\textbf{Critique outcomes.} The critique on pbmc (6 findings) led to rewritten reasons and the Diffusion Maps investigation above; two findings had no fix available within the pipeline's current options and were stated as limitations in the report instead. The critique on pathmnist (5 findings) was fully addressed by rewriting reasons alone, including one finding the agent considered and rejected: no available preprocessing step removes staining variation without also removing brightness differences that likely help separate tissue types.
+
+\section{Strengths and limitations}
+
+\textbf{Strengths:} the pipeline generalizes across a genuinely different data type without any code change; the density-based clustering-$k$ mechanism and the critique subagent both caught real problems a naive default would have missed, in a live, unattended run, and each fix was independently validated before being trusted; every decision is traceable to a specific number, and a report can never quote a value that is not backed by a metrics file; failures degrade gracefully (a retry, then a PCA fallback for that slot) rather than aborting the run.
+
+\textbf{Limitations:} categorical (non-numeric) feature columns are refused outright, not encoded; there is no per-cell quality-control or doublet filtering (a gap the critique flagged directly on pbmc, since row-level filtering would need every downstream script to reconstruct an identical filtered subset, a larger architectural change than the column-level steps this pipeline supports); GPLVM is not implemented; imputation is single-value only; a dataset's label names are never available to the report, only the raw integer codes, even when the description lists them; an artifact is keyed by method name alone, so a second run of the same method at a different seed cannot be stored alongside the first; \code{run_log.json}/\code{metrics/clustering.json} retain only the current state, not a revision's history; and the heavier \code{general_purpose} methods are slow at PathMNIST's scale (Sparse PCA and t-SNE each took roughly ten to twenty minutes), a real cost of running the full method set rather than a small hand-picked one.
+
+\end{document}
