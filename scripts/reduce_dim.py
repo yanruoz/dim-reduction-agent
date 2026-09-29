@@ -171,11 +171,18 @@ def _run_pca(X, hp, seed):
 
 
 def _run_kernel_pca(X, hp, seed):
+    """gamma defaults to None (sklearn's own default, 1/n_features for the rbf/poly/sigmoid
+    kernels), same behavior as before this took a gamma hyperparameter at all. Exposing it lets a
+    plan set an RBF kernel width that isn't automatically dwarfed by a huge or non-count feature
+    space -- found necessary live: at the default on a large sparse gene-expression matrix,
+    RBF Kernel PCA came out close to linear PCA (gamma too small to make the kernel behave
+    nonlinearly at that scale)."""
     from sklearn.decomposition import KernelPCA
 
     model = KernelPCA(
         n_components=hp.get("n_components", 2),
         kernel=hp.get("kernel", "rbf"),
+        gamma=hp.get("gamma"),
         random_state=seed,
     )
     return model.fit_transform(X), {}
