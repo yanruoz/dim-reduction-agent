@@ -380,7 +380,28 @@ if __name__ == "__main__":
 
     # --- Critique page, if present ---
     if critique:
-        pages.append(text_page("Critique and revision", [(None, [json.dumps(critique, indent=2)])]))
+        readiness_text = {
+            "ready": "ready: no findings, or none judged worth a plan change.",
+            "revise": "revise: at least one finding was addressed with a plan revision.",
+            "flag_only": "flag_only: a finding exists that no plan change can fix; stated as a limitation instead.",
+        }.get(critique.get("readiness"), critique.get("readiness", "unknown"))
+        findings = critique.get("findings", [])
+        summary_lines = [
+            f"Reviewed plan revision {critique.get('plan_revision_reviewed')}. Readiness: {readiness_text}",
+            f"{len(findings)} finding(s): " + ", ".join(f"{s}={sum(1 for f in findings if f.get('severity') == s)}" for s in ("critical", "moderate", "minor")) if findings else "No findings.",
+        ]
+        critique_blocks = [(None, summary_lines)]
+        for f in findings:
+            heading = f"{f.get('id', '?')}: {f.get('category', 'other')} ({f.get('severity', '?')})"
+            body = [f.get("summary", ""), f"Evidence: {f.get('evidence', '')}"]
+            if f.get("recommendation"):
+                body.append(f"Recommendation: {f['recommendation']}")
+            critique_blocks.append((heading, body))
+        if critique.get("notes"):
+            critique_blocks.append(("Critic's notes", [critique["notes"]]))
+        if plan.get("critique_applied"):
+            critique_blocks.append((f"Revision applied (now revision {plan.get('revision')})", [plan["critique_applied"]]))
+        pages.extend(text_pages("Critique and revision", critique_blocks))
 
     # --- Limitations page ---
     limitation_lines = []
